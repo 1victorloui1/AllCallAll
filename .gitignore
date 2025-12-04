@@ -34,4 +34,4 @@ yarn-error.log*
 .env.*.local
 
 # Assistant Docs
-docs/
+docs/mobile/*.apk

@@ -119,6 +119,25 @@ go run cmd/server/main.go
 curl http://localhost:8080/health
 ```
 
+### WebRTC/TURN 配置（真机语音必需）
+
+1. 在服务器上准备 TURN（示例，端口 3478）：  
+   ```bash
+   docker run -d --network host --name coturn instrumentisto/coturn \
+     -a -f -v -n --log-file=stdout \
+     --realm=allcallall --user=allcallall:strongpassword \
+     --external-ip=$(curl -s ifconfig.me) \
+     --min-port=49152 --max-port=49200
+   ```
+2. 把 TURN/STUN 列表下发给后端（移动端会自动拉取）：  
+   ```bash
+   export WEBRTC_ICE_SERVERS_JSON='[
+     {"urls":["stun:stun.l.google.com:19302"]},
+     {"urls":["turn:47.109.183.99:3478?transport=udp","turn:47.109.183.99:3478?transport=tcp"],"username":"allcallall","credential":"strongpassword"}
+   ]'
+   ```
+3. 重启后端。APK 不需要重新打包，登陆后客户端会自动从 `/api/v1/webrtc/config` 读取最新 ICE/TURN 配置。
+
 ### 启动移动应用
 
 #### 推荐方式：Expo Development Client + ADB 反向转发（最稳定）
