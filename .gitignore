@@ -35,3 +35,4 @@ yarn-error.log*
 
 # Assistant Docs
 docs/mobile/*.apk
+mobile/*.apk
