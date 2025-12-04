@@ -21,6 +21,7 @@ import {
 } from "react-native-webrtc";
 
 import { SignalingClient, SignalMessage } from "../api/signaling";
+import { fetchWebRTCConfig, IceServer as ApiIceServer } from "../api/webrtc";
 import { useAuthContext } from "./AuthContext";
 
 type CallDirection = "incoming" | "outgoing";
@@ -54,13 +55,41 @@ const SignalingContext = createContext<SignalingContextValue | undefined>(
   undefined
 );
 
-const STUN_SERVERS = [
+type IceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+
+const DEFAULT_ICE_SERVERS: IceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
   { urls: "stun:stun3.l.google.com:19302" },
   { urls: "stun:stun4.l.google.com:19302" }
 ];
+
+const normalizeIceServers = (servers?: ApiIceServer[]): IceServer[] => {
+  if (!servers || !servers.length) {
+    return DEFAULT_ICE_SERVERS;
+  }
+
+  const mapped = servers
+    .map((server) => {
+      const urls = (server as any).urls ?? (server as any).URLs;
+      if (!urls || (Array.isArray(urls) && urls.length === 0)) {
+        return null;
+      }
+      return {
+        urls,
+        username: (server as any).username ?? (server as any).Username,
+        credential: (server as any).credential ?? (server as any).Credential
+      } as IceServer;
+    })
+    .filter((item): item is IceServer => Boolean(item));
+
+  return mapped.length ? mapped : DEFAULT_ICE_SERVERS;
+};
 
 const isSessionDescriptionPayload = (
   value: unknown
@@ -92,6 +121,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   const [connectionReady, setConnectionReady] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [iceServers, setIceServers] = useState<IceServer[]>(DEFAULT_ICE_SERVERS);
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -103,6 +133,38 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // 获取后端下发的 ICE/TURN 配置，真机/NAT 环境下依赖 TURN 才能传音频
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadIceServers = async () => {
+      if (!token) {
+        setIceServers(DEFAULT_ICE_SERVERS);
+        return;
+      }
+
+      try {
+        const response = await fetchWebRTCConfig(token);
+        const normalized = normalizeIceServers(response?.ice_servers);
+        if (!cancelled) {
+          setIceServers(normalized);
+          console.log("[SignalingContext] ICE servers loaded:", normalized);
+        }
+      } catch (error) {
+        console.warn("[SignalingContext] Failed to load ICE servers, using defaults", error);
+        if (!cancelled) {
+          setIceServers(DEFAULT_ICE_SERVERS);
+        }
+      }
+    };
+
+    loadIceServers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const ensureAudioPermission = useCallback(async () => {
     console.log("[ensureAudioPermission] Platform:", Platform.OS);
@@ -248,12 +310,18 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-const createPeerConnection = useCallback(() => {
-  const pc = new RTCPeerConnection({
-    iceServers: STUN_SERVERS,
-    bundlePolicy: "max-bundle",
-    iceTransportPolicy: "all"
-  } as any);
+  const createPeerConnection = useCallback(() => {
+    const activeIceServers = iceServers.length
+      ? iceServers
+      : DEFAULT_ICE_SERVERS;
+
+    console.log("[createPeerConnection] Using ICE servers:", activeIceServers);
+
+    const pc = new RTCPeerConnection({
+      iceServers: activeIceServers,
+      bundlePolicy: "max-bundle",
+      iceTransportPolicy: "all"
+    } as any);
 
     (pc as any).onicecandidate = (event: any) => {
       if (!event.candidate) {
@@ -296,7 +364,7 @@ const createPeerConnection = useCallback(() => {
 
     peerRef.current = pc;
     return pc;
-  }, [resetCallState, sendMessage]);
+  }, [iceServers, resetCallState, sendMessage]);
 
   useEffect(() => {
     if (!token) {
