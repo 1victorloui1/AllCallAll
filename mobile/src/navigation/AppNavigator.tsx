@@ -8,6 +8,7 @@ import RegisterScreen from "../screens/RegisterScreen";
 import EmailVerificationScreen from "../screens/EmailVerificationScreen";
 import ContactsScreen from "../screens/ContactsScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
+import CallLogsScreen from "../screens/CallLogsScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   EmailVerification: { email?: string; onVerified?: () => void };
   Contacts: undefined;
   ChangePassword: undefined;
+  CallLogs: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -51,6 +53,11 @@ const AppNavigator: React.FC = () => {
             name="ChangePassword"
             component={ChangePasswordScreen}
             options={{ title: "修改密码 / Change Password" }}
+          />
+          <Stack.Screen
+            name="CallLogs"
+            component={CallLogsScreen}
+            options={{ title: "通话记录 / Call Logs" }}
           />
         </>
       ) : (

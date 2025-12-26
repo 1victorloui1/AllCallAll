@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/allcallall/backend/internal/calllog"
 	"github.com/allcallall/backend/internal/media"
 	"github.com/allcallall/backend/internal/presence"
 )
@@ -25,6 +26,7 @@ type Hub struct {
 	logger       zerolog.Logger
 	presence     *presence.Manager
 	mediaEngine  *media.Engine
+	callLogs     *calllog.Service
 
 	mu      sync.RWMutex
 	clients map[string]map[*client]struct{}
@@ -141,6 +143,8 @@ func (h *Hub) handleIncoming(ctx context.Context, fromClient *client, data []byt
 		return err
 	}
 
+	h.recordCallEvent(ctx, &msg)
+
 	encoded, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -165,6 +169,33 @@ func (h *Hub) handleIncoming(ctx context.Context, fromClient *client, data []byt
 	}
 
 	return h.redis.Publish(ctx, h.channelName(msg.To), envBytes).Err()
+}
+
+// WithCallLogService attaches call log service to signaling hub.
+func (h *Hub) WithCallLogService(service *calllog.Service) {
+	h.callLogs = service
+}
+
+func (h *Hub) recordCallEvent(ctx context.Context, msg *SignalMessage) {
+	if h.callLogs == nil {
+		return
+	}
+
+	switch msg.Type {
+	case TypeCallInvite:
+		if err := h.callLogs.RecordInvite(ctx, msg.CallID, msg.From, msg.To); err != nil {
+			h.logger.Warn().Err(err).Str("call_id", msg.CallID).Msg("record call invite failed")
+		}
+	case TypeCallAccept:
+		if err := h.callLogs.RecordAccept(ctx, msg.CallID); err != nil {
+			h.logger.Warn().Err(err).Str("call_id", msg.CallID).Msg("record call accept failed")
+		}
+	case TypeCallReject, TypeCallEnd:
+		if err := h.callLogs.RecordEnd(ctx, msg.CallID); err != nil {
+			h.logger.Warn().Err(err).Str("call_id", msg.CallID).Msg("record call end failed")
+		}
+	default:
+	}
 }
 
 func (h *Hub) applyProtocolRules(msg *SignalMessage) (*SignalMessage, error) {

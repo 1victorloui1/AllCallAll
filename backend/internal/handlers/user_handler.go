@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/allcallall/backend/internal/auth"
+	"github.com/allcallall/backend/internal/calllog"
 	"github.com/allcallall/backend/internal/contact"
 	"github.com/allcallall/backend/internal/presence"
 	"github.com/allcallall/backend/internal/user"
@@ -21,16 +22,18 @@ type UserHandler struct {
 	users    *user.Service
 	presence *presence.Manager
 	contacts *contact.Service
+	callLogs *calllog.Service
 }
 
 // NewUserHandler 构造函数
 // NewUserHandler creates a UserHandler.
-func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service) *UserHandler {
+func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service, callLogs *calllog.Service) *UserHandler {
 	return &UserHandler{
 		logger:   log.With().Str("component", "user_handler").Logger(),
 		users:    users,
 		presence: presence,
 		contacts: contacts,
+		callLogs: callLogs,
 	}
 }
 
@@ -41,6 +44,7 @@ func (h *UserHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/search", h.handleSearch)
 	rg.GET("/presence", h.handlePresence)
 	rg.POST("/change-password", h.handleChangePassword)
+	rg.GET("/call-logs", h.handleCallLogs)
 
 	contactsGroup := rg.Group("/contacts")
 	contactsGroup.GET("", h.handleListContacts)
@@ -148,6 +152,54 @@ func (h *UserHandler) handlePresence(c *gin.Context) {
 	}
 
 	JSONSuccess(c, http.StatusOK, gin.H{"presence": resp})
+}
+
+func (h *UserHandler) handleCallLogs(c *gin.Context) {
+	claims, err := auth.GetClaimsFromContext(c)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if h.callLogs == nil {
+		JSONError(c, http.StatusServiceUnavailable, "call log service unavailable")
+		return
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			if parsed > 200 {
+				parsed = 200
+			}
+			limit = parsed
+		}
+	}
+
+	logs, err := h.callLogs.List(c.Request.Context(), claims.UserID, limit)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("list call logs failed")
+		JSONError(c, http.StatusInternalServerError, "failed to list call logs")
+		return
+	}
+
+	response := make([]gin.H, 0, len(logs))
+	for _, log := range logs {
+		response = append(response, gin.H{
+			"id":                log.ID,
+			"call_id":           log.CallID,
+			"peer_email":        log.PeerEmail,
+			"peer_display_name": log.PeerDisplayName,
+			"direction":         log.Direction,
+			"status":            log.Status,
+			"started_at":        log.StartedAt,
+			"answered_at":       log.AnsweredAt,
+			"ended_at":          log.EndedAt,
+			"created_at":        log.CreatedAt,
+		})
+	}
+
+	JSONSuccess(c, http.StatusOK, gin.H{"call_logs": response})
 }
 
 type addContactRequest struct {

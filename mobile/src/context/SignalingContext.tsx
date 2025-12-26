@@ -20,6 +20,7 @@ import {
   mediaDevices as webrtcMediaDevices,
   RTCIceServer
 } from "react-native-webrtc";
+import { Audio } from "expo-av";
 
 import { SignalingClient, SignalMessage } from "../api/signaling";
 import { fetchWebRTCConfig } from "../api/webrtc";
@@ -99,13 +100,21 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionRef = useRef<CallSession | null>(null);
+  const statusRef = useRef<CallStatus>("idle");
   const pendingTarget = useRef<string | null>(null);
   const pendingLocalCandidates = useRef<IceCandidatePayload[]>([]);
   const pendingRemoteCandidates = useRef<IceCandidatePayload[]>([]);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringtoneRef = useRef<Audio.Sound | null>(null);
+  const ringtoneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +183,58 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     return true;
   }, []);
 
+  const clearCallTimeout = useCallback(() => {
+    if (callTimeoutRef.current) {
+      clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
+    }
+  }, []);
+
+  const stopRingtone = useCallback(async () => {
+    if (ringtoneTimeoutRef.current) {
+      clearTimeout(ringtoneTimeoutRef.current);
+      ringtoneTimeoutRef.current = null;
+    }
+    if (ringtoneRef.current) {
+      try {
+        await ringtoneRef.current.stopAsync();
+      } catch (error) {
+        console.warn("[stopRingtone] stop failed", error);
+      }
+      try {
+        await ringtoneRef.current.unloadAsync();
+      } catch (error) {
+        console.warn("[stopRingtone] unload failed", error);
+      }
+      ringtoneRef.current = null;
+    }
+  }, []);
+
+  const startRingtone = useCallback(async () => {
+    await stopRingtone();
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true
+      });
+    } catch (error) {
+      console.warn("[startRingtone] audio mode setup failed", error);
+    }
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require("../assets/ring.mp3"),
+        { shouldPlay: true, isLooping: true, volume: 1.0 }
+      );
+      ringtoneRef.current = sound;
+      ringtoneTimeoutRef.current = setTimeout(() => {
+        void stopRingtone();
+      }, 60_000);
+    } catch (error) {
+      console.warn("[startRingtone] failed to play ringtone", error);
+    }
+  }, [stopRingtone]);
+
   const resetPeerResources = useCallback(() => {
     pendingLocalCandidates.current = [];
     pendingRemoteCandidates.current = [];
@@ -202,8 +263,10 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     setSession(null);
     sessionRef.current = null;
     setStatus("idle");
+    clearCallTimeout();
+    void stopRingtone();
     resetPeerResources();
-  }, [resetPeerResources]);
+  }, [clearCallTimeout, resetPeerResources, stopRingtone]);
 
   const sendMessage = useCallback((message: SignalMessage) => {
     const client = signalingRef.current;
@@ -279,6 +342,29 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
   }, []);
+
+  const scheduleCallTimeout = useCallback(
+    (callId: string, peerEmail: string) => {
+      if (!callId || !peerEmail) {
+        return;
+      }
+      clearCallTimeout();
+      callTimeoutRef.current = setTimeout(() => {
+        sendMessage({
+          type: "call.end",
+          call_id: callId,
+          to: peerEmail,
+          payload: { reason: "timeout" }
+        });
+        Alert.alert(
+          "对方无应答",
+          "The called party did not respond."
+        );
+        resetCallState();
+      }, 60_000);
+    },
+    [clearCallTimeout, resetCallState, sendMessage]
+  );
 
   const createPeerConnection = useCallback(() => {
     const pc = new RTCPeerConnection({
@@ -379,6 +465,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
                 newSession.callId,
                 newSession.peerEmail
               );
+              scheduleCallTimeout(newSession.callId, newSession.peerEmail);
             }
             pendingTarget.current = null;
           } else {
@@ -397,8 +484,11 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             offer: message.payload as SessionDescriptionPayload
           });
           setStatus("incoming");
+          void startRingtone();
           break;
         case "call.accept":
+          clearCallTimeout();
+          void stopRingtone();
           if (isSessionDescriptionPayload(message.payload)) {
             const pc = peerRef.current;
             if (pc && message.payload.sdp) {
@@ -431,11 +521,25 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           }
           break;
         case "call.reject":
+          clearCallTimeout();
+          void stopRingtone();
           Alert.alert("Call rejected", `${message.from} declined the call.`);
           resetCallState();
           break;
         case "call.end":
-          Alert.alert("Call ended", `${message.from ?? "Peer"} ended the call.`);
+          clearCallTimeout();
+          void stopRingtone();
+          if (
+            message.payload &&
+            typeof message.payload === "object" &&
+            "reason" in message.payload &&
+            String((message.payload as any).reason) === "timeout" &&
+            statusRef.current !== "in_call"
+          ) {
+            Alert.alert("您有未接来电", "You have missed calls.");
+          } else {
+            Alert.alert("Call ended", `${message.from ?? "Peer"} ended the call.`);
+          }
           resetCallState();
           break;
         case "ice.candidate":
@@ -486,7 +590,17 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       client.disconnect();
       signalingRef.current = null;
     };
-  }, [flushPendingLocalCandidates, resetCallState, drainRemoteCandidates, enqueueRemoteCandidate, token]);
+  }, [
+    clearCallTimeout,
+    drainRemoteCandidates,
+    enqueueRemoteCandidate,
+    flushPendingLocalCandidates,
+    resetCallState,
+    scheduleCallTimeout,
+    startRingtone,
+    stopRingtone,
+    token
+  ]);
 
   const startCall = useCallback(
     async (email: string) => {
@@ -585,6 +699,8 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
+    void stopRingtone();
+
     const hasPermission = await ensureAudioPermission();
     if (!hasPermission) {
       Alert.alert("需要麦克风权限", "请在系统设置中授予麦克风权限。");
@@ -642,31 +758,42 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       Alert.alert("无法接通", "请确认麦克风或蓝牙权限已授权。");
       resetCallState();
     }
-  }, [createPeerConnection, drainRemoteCandidates, ensureAudioPermission, resetCallState, sendMessage, session]);
+  }, [
+    createPeerConnection,
+    drainRemoteCandidates,
+    ensureAudioPermission,
+    resetCallState,
+    sendMessage,
+    session,
+    stopRingtone
+  ]);
 
   const rejectCall = useCallback(() => {
     if (!session) {
       return;
     }
+    void stopRingtone();
     sendMessage({
       type: "call.reject",
       call_id: session.callId,
       to: session.peerEmail
     });
     resetCallState();
-  }, [resetCallState, sendMessage, session]);
+  }, [resetCallState, sendMessage, session, stopRingtone]);
 
   const endCall = useCallback(() => {
     if (!session) {
       return;
     }
+    clearCallTimeout();
+    void stopRingtone();
     sendMessage({
       type: "call.end",
       call_id: session.callId,
       to: session.peerEmail
     });
     resetCallState();
-  }, [resetCallState, sendMessage, session]);
+  }, [clearCallTimeout, resetCallState, sendMessage, session, stopRingtone]);
 
   const value = useMemo<SignalingContextValue>(
     () => ({

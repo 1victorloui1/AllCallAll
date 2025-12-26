@@ -182,6 +182,12 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity
+            style={styles.callLogsButton}
+            onPress={() => navigation.navigate("CallLogs")}
+          >
+            <Text style={styles.callLogsText}>通话记录</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.changePasswordButton}
             onPress={() => navigation.navigate("ChangePassword")}
           >
@@ -289,6 +295,17 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     gap: 8
+  },
+  callLogsButton: {
+    backgroundColor: "#111827",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10
+  },
+  callLogsText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 12
   },
   changePasswordButton: {
     backgroundColor: "#3b82f6",
