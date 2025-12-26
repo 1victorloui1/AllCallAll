@@ -11,9 +11,14 @@
 ### ✨ 特性
 
 - 🎤 **实时音视频通话** - 基于 Pion WebRTC 的点对点音频通话
+- 🔔 **来电铃声与超时** - 60 秒无人接听自动挂断并提示
+- 💬 **文本聊天** - 支持表情选择与消息时间戳
+- 📝 **通话记录** - 记录拨出/接听/未接通话
+- 🗂️ **聊天记录持久化** - 服务端 MySQL 保存聊天历史
 - 👥 **联系人管理** - 添加、搜索和管理通讯录
 - 🟢 **在线状态** - 实时显示用户在线状态和最后在线时间
 - 🔐 **用户认证** - JWT 令牌认证和会话管理
+- 🌐 **中英文切换** - 登录页切换后全局 UI 同步
 - 📱 **跨平台** - Android 原生应用支持，iOS 开发中
 - 🚀 **高性能** - Redis 缓存、连接池优化、异步 WebSocket 信令
 - 🔄 **自动重连** - 网络异常自动重新连接
@@ -35,6 +40,7 @@
 - **语言**: TypeScript
 - **UI**: React Navigation
 - **WebRTC**: react-native-webrtc 124.0.0
+- **音频**: expo-av（铃声播放）
 - **HTTP**: Axios
 - **状态管理**: React Context API
 
@@ -179,6 +185,8 @@ docker stop coturn
 ```bash
 docker exec -it infra-mysql-1 mysql -uroot -p"$MYSQL_ROOT_PASSWORD" allcallall_db \
   -e "SET FOREIGN_KEY_CHECKS=0;
+      TRUNCATE TABLE chat_messages;
+      TRUNCATE TABLE call_logs;
       TRUNCATE TABLE contacts;
       TRUNCATE TABLE email_verification_codes;
       TRUNCATE TABLE email_send_logs;
@@ -255,6 +263,8 @@ allcall/
 │   │   ├── auth/               # 认证和 JWT
 │   │   ├── user/               # 用户管理
 │   │   ├── contact/            # 联系人管理
+│   │   ├── calllog/            # 通话记录
+│   │   ├── chatlog/            # 聊天记录
 │   │   ├── signaling/          # WebRTC 信令
 │   │   ├── media/              # Pion WebRTC 媒体引擎
 │   │   ├── presence/           # 在线状态管理
@@ -269,7 +279,7 @@ allcall/
 │   ├── src/
 │   │   ├── screens/            # 应用页面
 │   │   ├── components/         # UI 组件
-│   │   ├── context/            # 状态管理（Auth、Signaling）
+│   │   ├── context/            # 状态管理（Auth、Signaling、Language）
 │   │   ├── navigation/         # 路由配置
 │   │   ├── config/             # 应用配置
 │   │   └── utils/              # 工具函数
@@ -386,6 +396,8 @@ POST   /api/v1/auth/login        - 用户登录
 GET    /api/v1/users/contacts    - 获取联系人列表
 GET    /api/v1/users/presence    - 获取用户在线状态
 GET    /api/v1/users/search      - 搜索用户
+GET    /api/v1/users/call-logs   - 获取通话记录
+GET    /api/v1/users/chat-logs   - 获取聊天记录（?peer_email=xxx）
 ```
 
 ### 信令
@@ -550,9 +562,14 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 ### ✨ Features
 
 - 🎤 **Real-time Audio/Video Calls** - Peer-to-peer audio calls based on Pion WebRTC
+- 🔔 **Ringtone & Timeout** - Auto hangup after 60 seconds of no answer
+- 💬 **Text Chat** - Emoji picker and message timestamps
+- 📝 **Call Logs** - Outgoing/answered/missed call history
+- 🗂️ **Chat History Persistence** - Stored in MySQL on the server
 - 👥 **Contact Management** - Add, search, and manage contacts
 - 🟢 **Online Status** - Real-time user presence and last seen information
 - 🔐 **User Authentication** - JWT token authentication and session management via email
+- 🌐 **Bilingual UI** - Full UI switch between 中文 and English
 - 📧 **Email Verification** - Secure user registration with QQ SMTP email verification
 - 📱 **Cross-Platform** - Native Android support, iOS in development
 - 🚀 **High Performance** - Redis caching, connection pooling, async WebSocket signaling
@@ -575,6 +592,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - **Language**: TypeScript
 - **UI**: React Navigation
 - **WebRTC**: react-native-webrtc 124.0.0
+- **Audio**: expo-av (ringtone playback)
 - **HTTP**: Axios
 - **State Management**: React Context API
 
@@ -653,6 +671,8 @@ docker stop coturn
 ```bash
 docker exec -it infra-mysql-1 mysql -uroot -p"$MYSQL_ROOT_PASSWORD" allcallall_db \
   -e "SET FOREIGN_KEY_CHECKS=0;
+      TRUNCATE TABLE chat_messages;
+      TRUNCATE TABLE call_logs;
       TRUNCATE TABLE contacts;
       TRUNCATE TABLE email_verification_codes;
       TRUNCATE TABLE email_send_logs;
@@ -769,6 +789,8 @@ allcall/
 │   │   ├── auth/               # Authentication and JWT
 │   │   ├── user/               # User management
 │   │   ├── contact/            # Contact management
+│   │   ├── calllog/            # Call logs
+│   │   ├── chatlog/            # Chat logs
 │   │   ├── signaling/          # WebRTC signaling
 │   │   ├── media/              # Pion WebRTC media engine
 │   │   ├── presence/           # Online status management
@@ -783,7 +805,7 @@ allcall/
 │   ├── src/
 │   │   ├── screens/            # Application pages
 │   │   ├── components/         # UI components
-│   │   ├── context/            # State management (Auth, Signaling)
+│   │   ├── context/            # State management (Auth, Signaling, Language)
 │   │   ├── navigation/         # Routing configuration
 │   │   ├── config/             # Application configuration
 │   │   └── utils/              # Utility functions
@@ -900,6 +922,8 @@ POST   /api/v1/auth/login        - User login
 GET    /api/v1/users/contacts    - Get contacts list
 GET    /api/v1/users/presence    - Get user online status
 GET    /api/v1/users/search      - Search users
+GET    /api/v1/users/call-logs   - Get call logs
+GET    /api/v1/users/chat-logs   - Get chat logs (?peer_email=xxx)
 ```
 
 #### Signaling
