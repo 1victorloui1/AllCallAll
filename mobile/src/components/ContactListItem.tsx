@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 
 import { User } from "../api/users";
 import PresenceBadge from "./PresenceBadge";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Props {
   contact: User;
@@ -11,6 +12,7 @@ interface Props {
     last_seen?: string | null;
   };
   onCall: (email: string) => void;
+  onMessage: (contact: User) => void;
   onRemove: (contact: User) => void;
 }
 
@@ -18,8 +20,11 @@ const ContactListItem: React.FC<Props> = ({
   contact,
   presence,
   onCall,
+  onMessage,
   onRemove
 }) => {
+  const { t } = useLanguage();
+
   return (
     <View style={styles.container}>
       <View style={styles.info}>
@@ -31,17 +36,25 @@ const ContactListItem: React.FC<Props> = ({
         />
       </View>
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.button, styles.call]}
-          onPress={() => onCall(contact.email)}
-        >
-          <Text style={styles.buttonText}>呼叫 / Call</Text>
-        </TouchableOpacity>
+        <View style={styles.actionColumn}>
+          <TouchableOpacity
+            style={[styles.button, styles.call]}
+            onPress={() => onCall(contact.email)}
+          >
+            <Text style={styles.buttonText}>{t("contact_call")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.message]}
+            onPress={() => onMessage(contact)}
+          >
+            <Text style={styles.buttonText}>{t("contact_message")}</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           style={[styles.button, styles.remove]}
           onPress={() => onRemove(contact)}
         >
-          <Text style={styles.buttonText}>删除 / Remove</Text>
+          <Text style={styles.buttonText}>{t("contact_remove")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -75,7 +88,13 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    alignItems: "flex-start"
+  },
+  actionColumn: {
+    flex: 1,
+    gap: 8,
+    marginRight: 12
   },
   button: {
     paddingVertical: 10,
@@ -84,6 +103,9 @@ const styles = StyleSheet.create({
   },
   call: {
     backgroundColor: "#2563eb"
+  },
+  message: {
+    backgroundColor: "#0ea5e9"
   },
   remove: {
     backgroundColor: "#dc2626"

@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Props {
   online: boolean;
@@ -7,15 +8,18 @@ interface Props {
 }
 
 const PresenceBadge: React.FC<Props> = ({ online, lastSeen }) => {
+  const { t } = useLanguage();
   return (
     <View style={styles.container}>
       <View style={[styles.dot, online ? styles.online : styles.offline]} />
       <Text style={styles.text}>
         {online
-          ? "在线 / Online"
+          ? t("presence_online")
           : lastSeen
-          ? `离线 / Offline • ${new Date(lastSeen).toLocaleString()}`
-          : "离线 / Offline"}
+          ? t("presence_offline_time", {
+              time: new Date(lastSeen).toLocaleString()
+            })
+          : t("presence_offline")}
       </Text>
     </View>
   );

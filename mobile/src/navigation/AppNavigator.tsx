@@ -3,12 +3,14 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuthContext } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import EmailVerificationScreen from "../screens/EmailVerificationScreen";
 import ContactsScreen from "../screens/ContactsScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import CallLogsScreen from "../screens/CallLogsScreen";
+import ChatScreen from "../screens/ChatScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -17,6 +19,7 @@ export type RootStackParamList = {
   Contacts: undefined;
   ChangePassword: undefined;
   CallLogs: undefined;
+  Chat: { peerEmail: string; peerName?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,6 +38,7 @@ const LoadingFallback = () => (
 
 const AppNavigator: React.FC = () => {
   const { token, loading } = useAuthContext();
+  const { t } = useLanguage();
 
   if (loading) {
     return <LoadingFallback />;
@@ -52,12 +56,17 @@ const AppNavigator: React.FC = () => {
           <Stack.Screen
             name="ChangePassword"
             component={ChangePasswordScreen}
-            options={{ title: "修改密码 / Change Password" }}
+            options={{ title: t("change_password_title") }}
           />
           <Stack.Screen
             name="CallLogs"
             component={CallLogsScreen}
-            options={{ title: "通话记录 / Call Logs" }}
+            options={{ title: t("call_logs_title") }}
+          />
+          <Stack.Screen
+            name="Chat"
+            component={ChatScreen}
+            options={{ headerShown: false }}
           />
         </>
       ) : (
@@ -65,17 +74,17 @@ const AppNavigator: React.FC = () => {
           <Stack.Screen
             name="Login"
             component={LoginScreen}
-            options={{ title: "AllCallAll 登录 / Login" }}
+            options={{ title: t("login_nav_title") }}
           />
           <Stack.Screen
             name="Register"
             component={RegisterScreen}
-            options={{ title: "AllCallAll 注册 / Register" }}
+            options={{ title: t("register_nav_title") }}
           />
           <Stack.Screen
             name="EmailVerification"
             component={EmailVerificationScreen}
-            options={{ title: "邮箱验证 / Email Verification" }}
+            options={{ title: t("verify_nav_title") }}
           />
         </>
       )}

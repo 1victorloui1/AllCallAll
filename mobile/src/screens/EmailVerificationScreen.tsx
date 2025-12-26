@@ -17,7 +17,7 @@ import PrimaryButton from "../components/PrimaryButton";
 import VerificationCodeInput from "../components/VerificationCodeInput";
 import { sendVerificationCode, verifyCode } from "../api/email";
 import { RootStackParamList } from "../navigation/AppNavigator";
-import { useAuthContext } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EmailVerification">;
 
@@ -27,7 +27,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "EmailVerification">;
  */
 const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   const { email: initialEmail, onVerified } = route.params || {};
-  const { register } = useAuthContext();
+  const { t } = useLanguage();
 
   // ... 现有代码 ...
 
@@ -55,30 +55,26 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     try {
       // 基础验证
       if (!email.trim()) {
-        Alert.alert("错误", "请输入邮箱地址");
+        Alert.alert(t("error_title"), t("register_error_missing_email"));
         return;
       }
 
       // 邮箱格式验证
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        Alert.alert("错误", "请输入有效的邮箱地址");
+        Alert.alert(t("error_title"), t("register_error_invalid_email"));
         return;
       }
 
       setLoading(true);
       await sendVerificationCode(email.trim().toLowerCase());
 
-      Alert.alert("成功", "验证码已发送到您的邮箱");
+      Alert.alert(t("success_title"), t("verify_send_success"));
       setStep("verify");
       setCountdown(60); // 60秒倒计时
     } catch (error) {
       console.error("Send code error:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "请检查网络连接后重试";
-      Alert.alert("发送失败", errorMessage);
+      Alert.alert(t("error_title"), t("verify_send_failed"));
     } finally {
       setLoading(false);
     }
@@ -91,14 +87,14 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     try {
       const value = (inputCode ?? code).trim();
       if (value.length !== 6) {
-        Alert.alert("错误", "请输入完整的6位验证码");
+        Alert.alert(t("error_title"), t("verify_code_required"));
         return;
       }
 
       setLoading(true);
       await verifyCode(email.trim().toLowerCase(), value);
 
-      Alert.alert("成功", "邮箱验证完成");
+      Alert.alert(t("success_title"), t("verify_success"));
 
       // 如果是从注册流程来的，需要调用 onVerified 回调并完成注册
       if (onVerified) {
@@ -111,11 +107,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
       }
     } catch (error) {
       console.error("Verify code error:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "请检查验证码后重试";
-      Alert.alert("验证失败", errorMessage);
+      Alert.alert(t("error_title"), t("verify_failed"));
     } finally {
       setLoading(false);
     }
@@ -128,12 +120,12 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     try {
       setResendLoading(true);
       await sendVerificationCode(email.trim().toLowerCase());
-      Alert.alert("成功", "验证码已重新发送");
+      Alert.alert(t("success_title"), t("verify_resend_success"));
       setCountdown(60);
       setCode(""); // 清空之前输入的code
     } catch (error) {
       console.error("Resend code error:", error);
-      Alert.alert("重新发送失败", "请稍后重试");
+      Alert.alert(t("error_title"), t("verify_resend_failed"));
     } finally {
       setResendLoading(false);
     }
@@ -151,15 +143,13 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>邮箱验证</Text>
-            <Text style={styles.subtitle}>
-              我们会向您的邮箱发送验证码
-            </Text>
+            <Text style={styles.title}>{t("verify_title")}</Text>
+            <Text style={styles.subtitle}>{t("verify_subtitle")}</Text>
           </View>
 
           <View style={styles.form}>
             <TextField
-              label="邮箱 / Email"
+              label={t("register_email_label")}
               autoCapitalize="none"
               keyboardType="email-address"
               value={email}
@@ -169,7 +159,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
             />
 
             <PrimaryButton
-              title={loading ? "发送中..." : "发送验证码 / Send Code"}
+              title={loading ? t("verify_send_loading") : t("verify_send_code")}
               onPress={handleSendCode}
               disabled={loading || !email.trim()}
             />
@@ -179,7 +169,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
               style={styles.linkButton}
               disabled={loading}
             >
-              <Text style={styles.linkText}>返回 / Go Back</Text>
+              <Text style={styles.linkText}>{t("verify_back")}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -198,9 +188,9 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>验证邮箱</Text>
+          <Text style={styles.title}>{t("verify_title_code")}</Text>
           <Text style={styles.subtitle}>
-            请输入发送到 {email} 的验证码
+            {t("verify_subtitle_code", { email })}
           </Text>
         </View>
 
@@ -216,7 +206,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           />
 
           <PrimaryButton
-            title={loading ? "验证中..." : "确认验证 / Verify"}
+            title={loading ? t("verify_loading") : t("verify_button")}
             onPress={handleVerifyCode}
             disabled={loading || code.length !== 6}
           />
@@ -224,7 +214,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.resendContainer}>
             {countdown > 0 ? (
               <Text style={styles.countdownText}>
-                {countdown}秒后可重新发送
+                {t("verify_resend_countdown", { seconds: countdown })}
               </Text>
             ) : (
               <TouchableOpacity
@@ -234,7 +224,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
                 {resendLoading ? (
                   <ActivityIndicator size="small" color="#2563eb" />
                 ) : (
-                  <Text style={styles.resendText}>未收到验证码？重新发送</Text>
+                  <Text style={styles.resendText}>{t("verify_resend")}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -245,7 +235,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
             style={styles.linkButton}
             disabled={loading}
           >
-            <Text style={styles.linkText}>更改邮箱 / Change Email</Text>
+            <Text style={styles.linkText}>{t("verify_change_email")}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

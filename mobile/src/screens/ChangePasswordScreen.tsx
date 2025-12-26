@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,13 +10,13 @@ import {
   ScrollView
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { AxiosError } from "axios";
 
 import TextField from "../components/TextField";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuthContext } from "../context/AuthContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { changePassword, ChangePasswordRequest } from "../api/users";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ChangePassword">;
 
@@ -25,14 +25,17 @@ interface PasswordValidation {
   errors: string[];
 }
 
-const validatePassword = (password: string): PasswordValidation => {
+const validatePassword = (
+  password: string,
+  t: (key: string) => string
+): PasswordValidation => {
   const errors: string[] = [];
 
   if (password.length < 8) {
-    errors.push("密码至少需要 8 个字符");
+    errors.push(t("password_error_short"));
   }
   if (password.length > 128) {
-    errors.push("密码最多 128 个字符");
+    errors.push(t("password_error_long"));
   }
 
   const hasLetter = /[a-zA-Z]/.test(password);
@@ -41,13 +44,13 @@ const validatePassword = (password: string): PasswordValidation => {
   const onlyLettersAndDigits = /^[a-zA-Z0-9]*$/.test(password);
 
   if (!hasLetter) {
-    errors.push("密码必需包含字母（A-Z, a-z）");
+    errors.push(t("password_error_letter"));
   }
   if (!hasDigit) {
-    errors.push("密码必需包含数字（0-9）");
+    errors.push(t("password_error_digit"));
   }
   if (!onlyLettersAndDigits && password.length > 0) {
-    errors.push("密码不能包含特殊字符或空格");
+    errors.push(t("password_error_special"));
   }
 
   return {
@@ -58,6 +61,7 @@ const validatePassword = (password: string): PasswordValidation => {
 
 const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
   const { token } = useAuthContext();
+  const { t } = useLanguage();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -67,12 +71,15 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
   // 检查 token 是否存在，如果不存在则跳转回登陆
   React.useEffect(() => {
     if (!token) {
-      Alert.alert("授权失效", "请先登陆");
+      Alert.alert(t("auth_expired_title"), t("auth_expired_body"));
       navigation.goBack();
     }
-  }, [token, navigation]);
+  }, [navigation, t, token]);
 
-  const newPasswordValidation = validatePassword(newPassword);
+  const newPasswordValidation = useMemo(
+    () => validatePassword(newPassword, t),
+    [newPassword, t]
+  );
   const passwordsMatch = newPassword === confirmPassword && newPassword !== "";
   const isFormValid =
     oldPassword.length > 0 &&
@@ -81,7 +88,10 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleChangePassword = async () => {
     if (!isFormValid) {
-      Alert.alert("表单错误", "请检查所有字段");
+      Alert.alert(
+        t("change_password_form_error_title"),
+        t("change_password_form_error_body")
+      );
       return;
     }
 
@@ -97,27 +107,20 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
       await changePassword(token || "", request);
 
       Alert.alert(
-        "成功",
-        "密码已成功修改",
+        t("change_password_success_title"),
+        t("change_password_success_body"),
         [
           {
-            text: "确定",
+            text: t("confirm"),
             onPress: () => navigation.goBack()
           }
         ]
       );
     } catch (error) {
-      let errorMessage = "修改密码失败，请重试";
-
-      if (error instanceof AxiosError && error.response?.data) {
-        const data = error.response.data as any;
-        // 后端返回结构: { error: "message", success: false }
-        if (data.error) {
-          errorMessage = data.error;
-        }
-      }
-
-      Alert.alert("修改失败", errorMessage);
+      Alert.alert(
+        t("change_password_failed_title"),
+        t("change_password_failed_body")
+      );
       console.error("Change password error:", error);
     } finally {
       setLoading(false);
@@ -131,36 +134,34 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
     >
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>修改密码</Text>
-          <Text style={styles.subtitle}>
-            请输入您的当前密码和新密码
-          </Text>
+          <Text style={styles.title}>{t("change_password_title")}</Text>
+          <Text style={styles.subtitle}>{t("change_password_subtitle")}</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.fieldContainer}>
-            <Text style={styles.label}>当前密码 *</Text>
+            <Text style={styles.label}>{t("change_password_old_label")}</Text>
             <TextField
-              placeholder="输入当前密码"
+              placeholder={t("change_password_old_placeholder")}
               secureTextEntry={!showPassword}
               value={oldPassword}
               onChangeText={setOldPassword}
             />
             {oldPassword.length === 0 && (
-              <Text style={styles.helperText}>此字段为必填项</Text>
+              <Text style={styles.helperText}>{t("change_password_required")}</Text>
             )}
           </View>
 
           <View style={styles.fieldContainer}>
-            <Text style={styles.label}>新密码 *</Text>
+            <Text style={styles.label}>{t("change_password_new_label")}</Text>
             <TextField
-              placeholder="输入新密码"
+              placeholder={t("change_password_new_placeholder")}
               secureTextEntry={!showPassword}
               value={newPassword}
               onChangeText={setNewPassword}
             />
             <Text style={styles.helperText}>
-              需要至少 8 个字符，必须包含字母和数字
+              {t("change_password_rules")}
             </Text>
 
             {newPassword.length > 0 && (
@@ -172,7 +173,9 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
                 ))}
                 {newPasswordValidation.isValid && (
                   <View style={styles.successItem}>
-                    <Text style={styles.successText}>✓ 密码符合要求</Text>
+                    <Text style={styles.successText}>
+                      {t("change_password_valid")}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -180,9 +183,9 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           <View style={styles.fieldContainer}>
-            <Text style={styles.label}>确认新密码 *</Text>
+            <Text style={styles.label}>{t("change_password_confirm_label")}</Text>
             <TextField
-              placeholder="再次输入新密码"
+              placeholder={t("change_password_confirm_placeholder")}
               secureTextEntry={!showPassword}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -190,9 +193,13 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
             {confirmPassword.length > 0 && newPassword.length > 0 && (
               <>
                 {passwordsMatch ? (
-                  <Text style={styles.successText}>✓ 两次密码一致</Text>
+                  <Text style={styles.successText}>
+                    {t("change_password_match")}
+                  </Text>
                 ) : (
-                  <Text style={styles.errorText}>✗ 两次密码不一致</Text>
+                  <Text style={styles.errorText}>
+                    {t("change_password_mismatch")}
+                  </Text>
                 )}
               </>
             )}
@@ -203,12 +210,12 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
             style={styles.toggleButton}
           >
             <Text style={styles.toggleText}>
-              {showPassword ? "隐藏密码" : "显示密码"}
+              {showPassword ? t("change_password_hide") : t("change_password_show")}
             </Text>
           </TouchableOpacity>
 
           <PrimaryButton
-            title={loading ? "修改中..." : "修改密码"}
+            title={loading ? t("change_password_loading") : t("change_password_button")}
             onPress={handleChangePassword}
             disabled={!isFormValid || loading}
           />
@@ -217,7 +224,7 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => navigation.goBack()}
             style={styles.cancelButton}
           >
-            <Text style={styles.cancelText}>取消</Text>
+            <Text style={styles.cancelText}>{t("change_password_cancel")}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -14,11 +14,13 @@ import TextField from "../components/TextField";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuthContext } from "../context/AuthContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const { login } = useAuthContext();
+  const { t, language, setLanguage } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,10 +31,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       await login(email.trim(), password);
     } catch (error) {
       console.error(error);
-      Alert.alert(
-        "登录失败 / Login failed",
-        "请检查邮箱和密码 / Please verify your email and password."
-      );
+      Alert.alert(t("login_failed_title"), t("login_failed_message"));
     } finally {
       setLoading(false);
     }
@@ -44,27 +43,61 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       style={styles.container}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>AllCallAll</Text>
-        <Text style={styles.subtitle}>
-          以邮箱为唯一地址的实时通话系统{"\n"}Email-first calling experience
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>AllCallAll</Text>
+          <View style={styles.languageToggle}>
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                language === "zh" ? styles.languageButtonActive : null
+              ]}
+              onPress={() => setLanguage("zh")}
+            >
+              <Text
+                style={[
+                  styles.languageText,
+                  language === "zh" ? styles.languageTextActive : null
+                ]}
+              >
+                {t("language_zh")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                language === "en" ? styles.languageButtonActive : null
+              ]}
+              onPress={() => setLanguage("en")}
+            >
+              <Text
+                style={[
+                  styles.languageText,
+                  language === "en" ? styles.languageTextActive : null
+                ]}
+              >
+                {t("language_en")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={styles.subtitle}>{t("login_subtitle")}</Text>
       </View>
       <View style={styles.form}>
         <TextField
-          label="邮箱 / Email"
+          label={t("login_email_label")}
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
         />
         <TextField
-          label="密码 / Password"
+          label={t("login_password_label")}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
         <PrimaryButton
-          title={loading ? "登录中..." : "登录 / Login"}
+          title={loading ? t("login_loading") : t("login_button")}
           onPress={handleLogin}
           disabled={loading}
         />
@@ -72,9 +105,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           onPress={() => navigation.navigate("Register", {})}
           style={styles.linkButton}
         >
-          <Text style={styles.linkText}>
-            还没有账号？注册 / Need an account? Sign up
-          </Text>
+          <Text style={styles.linkText}>{t("login_signup")}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -91,10 +122,37 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 36
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
   title: {
     fontSize: 32,
     fontWeight: "800",
     color: "#1f2937"
+  },
+  languageToggle: {
+    flexDirection: "row",
+    backgroundColor: "#e5e7eb",
+    borderRadius: 14,
+    padding: 4
+  },
+  languageButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12
+  },
+  languageButtonActive: {
+    backgroundColor: "#111827"
+  },
+  languageText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151"
+  },
+  languageTextActive: {
+    color: "#fff"
   },
   subtitle: {
     marginTop: 12,

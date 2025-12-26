@@ -22,9 +22,11 @@ import {
 } from "react-native-webrtc";
 import { Audio } from "expo-av";
 
+import { fetchChatLogs } from "../api/chatLogs";
 import { SignalingClient, SignalMessage } from "../api/signaling";
 import { fetchWebRTCConfig } from "../api/webrtc";
 import { useAuthContext } from "./AuthContext";
+import { useLanguage } from "./LanguageContext";
 
 type CallDirection = "incoming" | "outgoing";
 
@@ -41,6 +43,29 @@ interface CallSession {
 
 type CallStatus = "idle" | "connecting" | "incoming" | "in_call";
 
+export type ChatMessage = {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  sentAt: string;
+  direction: "incoming" | "outgoing";
+};
+
+const chatMessageKey = (message: ChatMessage) =>
+  `${message.from}|${message.to}|${message.sentAt}|${message.body}`;
+
+const normalizeChatMessages = (messages: ChatMessage[]) => {
+  const sorted = [...messages].sort((a, b) => {
+    const aTime = new Date(a.sentAt).getTime();
+    const bTime = new Date(b.sentAt).getTime();
+    const aValue = Number.isNaN(aTime) ? 0 : aTime;
+    const bValue = Number.isNaN(bTime) ? 0 : bTime;
+    return aValue - bValue;
+  });
+  return sorted;
+};
+
 interface SignalingContextValue {
   status: CallStatus;
   session: CallSession | null;
@@ -51,6 +76,9 @@ interface SignalingContextValue {
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
   endCall: () => void;
+  chatMessages: Record<string, ChatMessage[]>;
+  sendChatMessage: (peerEmail: string, text: string) => void;
+  loadChatHistory: (peerEmail: string, limit?: number) => Promise<void>;
 }
 
 const SignalingContext = createContext<SignalingContextValue | undefined>(
@@ -90,12 +118,14 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   children
 }) => {
   const { token, user } = useAuthContext();
+  const { t } = useLanguage();
   const [status, setStatus] = useState<CallStatus>("idle");
   const [session, setSession] = useState<CallSession | null>(null);
   const [connectionReady, setConnectionReady] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
+  const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -175,13 +205,18 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         return allGranted;
       } catch (error) {
         console.error("[ensureAudioPermission] Permission request error:", error);
-        Alert.alert("权限错误", `无法获取权限: ${error instanceof Error ? error.message : String(error)}`);
+        Alert.alert(
+          t("permission_error_title"),
+          t("permission_error_body", {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        );
         return false;
       }
     }
     console.log("[ensureAudioPermission] iOS platform, returning true");
     return true;
-  }, []);
+  }, [t]);
 
   const clearCallTimeout = useCallback(() => {
     if (callTimeoutRef.current) {
@@ -275,7 +310,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!client) {
       console.warn("[sendMessage] No active signaling client, message dropped", message);
       if (message.type !== "ice.candidate") {
-        Alert.alert("连接问题", "信令服务未连接。");
+        Alert.alert(t("connection_issue_title"), t("connection_issue_body"));
       }
       return;
     }
@@ -291,10 +326,10 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (error) {
       console.error("[sendMessage] Failed to send signaling message", error);
       if (message.type !== "ice.candidate") {
-        Alert.alert("连接问题", "无法发送信令消息。");
+        Alert.alert(t("connection_issue_title"), t("signal_send_failed_body"));
       }
     }
-  }, []);
+  }, [t]);
 
   const enqueueRemoteCandidate = useCallback((candidate: IceCandidatePayload) => {
     const alreadyQueued = pendingRemoteCandidates.current.some(
@@ -343,6 +378,99 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  const upsertChatMessages = useCallback(
+    (peerEmail: string, incoming: ChatMessage[]) => {
+      if (!incoming.length) {
+        return;
+      }
+      setChatMessages((current) => {
+        const existing = current[peerEmail] ?? [];
+        const existingKeys = new Set(existing.map(chatMessageKey));
+        const merged = [...existing];
+        incoming.forEach((message) => {
+          const key = chatMessageKey(message);
+          if (!existingKeys.has(key)) {
+            existingKeys.add(key);
+            merged.push(message);
+          }
+        });
+        return {
+          ...current,
+          [peerEmail]: normalizeChatMessages(merged)
+        };
+      });
+    },
+    []
+  );
+
+  const appendChatMessage = useCallback(
+    (peerEmail: string, message: ChatMessage) => {
+      upsertChatMessages(peerEmail, [message]);
+    },
+    [upsertChatMessages]
+  );
+
+  const loadChatHistory = useCallback(
+    async (peerEmail: string, limit = 50) => {
+      if (!token) {
+        Alert.alert(t("login_required_title"), t("login_required_body"));
+        return;
+      }
+      const target = peerEmail.trim();
+      if (!target) {
+        return;
+      }
+      try {
+        const logs = await fetchChatLogs(token, target, limit);
+        const history = logs.map((log) => ({
+          id: `server-${log.id}`,
+          from: log.sender_email,
+          to: log.receiver_email,
+          body: log.body,
+          sentAt: log.sent_at,
+          direction: log.direction
+        }));
+        upsertChatMessages(target, history);
+      } catch (error) {
+        console.error("loadChatHistory error", error);
+        Alert.alert(t("error_title"), t("chat_load_failed"));
+      }
+    },
+    [t, token, upsertChatMessages]
+  );
+
+  const sendChatMessage = useCallback(
+    (peerEmail: string, text: string) => {
+      const content = text.trim();
+      if (!content) {
+        return;
+      }
+      if (!user?.email) {
+        Alert.alert(t("login_required_title"), t("login_required_body"));
+        return;
+      }
+      const sentAt = new Date().toISOString();
+      const message: ChatMessage = {
+        id: `${user.email}-${sentAt}`,
+        from: user.email,
+        to: peerEmail,
+        body: content,
+        sentAt,
+        direction: "outgoing"
+      };
+      appendChatMessage(peerEmail, message);
+      sendMessage({
+        type: "chat.message",
+        to: peerEmail,
+        payload: {
+          text: content,
+          sent_at: sentAt
+        }
+      });
+    },
+    [appendChatMessage, sendMessage, t, user?.email]
+  );
+
   const scheduleCallTimeout = useCallback(
     (callId: string, peerEmail: string) => {
       if (!callId || !peerEmail) {
@@ -356,14 +484,11 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           to: peerEmail,
           payload: { reason: "timeout" }
         });
-        Alert.alert(
-          "对方无应答",
-          "The called party did not respond."
-        );
+        Alert.alert(t("call_timeout_title"), t("call_timeout_body"));
         resetCallState();
       }, 60_000);
     },
-    [clearCallTimeout, resetCallState, sendMessage]
+    [clearCallTimeout, resetCallState, sendMessage, t]
   );
 
   const createPeerConnection = useCallback(() => {
@@ -422,6 +547,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       signalingRef.current?.disconnect();
       signalingRef.current = null;
       setConnectionReady(false);
+      setChatMessages({});
       resetCallState();
       return;
     }
@@ -474,7 +600,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           break;
         case "call.invite":
           if (!message.from || !isSessionDescriptionPayload(message.payload)) {
-            Alert.alert("呼叫错误", "收到无效的呼叫请求");
+            Alert.alert(t("call_error_title"), t("call_error_invalid_invite"));
             break;
           }
           setSession({
@@ -523,7 +649,10 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         case "call.reject":
           clearCallTimeout();
           void stopRingtone();
-          Alert.alert("Call rejected", `${message.from} declined the call.`);
+          Alert.alert(
+            t("call_rejected_title"),
+            t("call_rejected_body", { name: message.from ?? "" })
+          );
           resetCallState();
           break;
         case "call.end":
@@ -536,12 +665,35 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             String((message.payload as any).reason) === "timeout" &&
             statusRef.current !== "in_call"
           ) {
-            Alert.alert("您有未接来电", "You have missed calls.");
+            Alert.alert(t("missed_call_title"), t("missed_call_body"));
           } else {
-            Alert.alert("Call ended", `${message.from ?? "Peer"} ended the call.`);
+            Alert.alert(
+              t("call_ended_title"),
+              t("call_ended_body", { name: message.from ?? "" })
+            );
           }
           resetCallState();
           break;
+        case "chat.message": {
+          if (!message.from || !message.payload || typeof message.payload !== "object") {
+            break;
+          }
+          const payload = message.payload as { text?: string; sent_at?: string };
+          if (!payload.text) {
+            break;
+          }
+          const sentAt = payload.sent_at || new Date().toISOString();
+          const incoming: ChatMessage = {
+            id: `${message.from}-${sentAt}`,
+            from: message.from,
+            to: message.to,
+            body: payload.text,
+            sentAt,
+            direction: "incoming"
+          };
+          appendChatMessage(message.from, incoming);
+          break;
+        }
         case "ice.candidate":
           if (isIceCandidatePayload(message.payload)) {
             const pc = peerRef.current;
@@ -566,11 +718,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           }
           break;
         case "call.error":
-          if (message.payload && typeof message.payload === "object" && "reason" in message.payload) {
-            Alert.alert("Call error", String((message.payload as any).reason ?? "Error"));
-          } else {
-            Alert.alert("Call error", "Error");
-          }
+          Alert.alert(t("call_error_title"), t("call_error_generic"));
           resetCallState();
           break;
         default:
@@ -591,6 +739,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       signalingRef.current = null;
     };
   }, [
+    appendChatMessage,
     clearCallTimeout,
     drainRemoteCandidates,
     enqueueRemoteCandidate,
@@ -599,6 +748,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     scheduleCallTimeout,
     startRingtone,
     stopRingtone,
+    t,
     token
   ]);
 
@@ -608,13 +758,13 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       
       if (!user) {
         console.warn("[startCall] No user logged in");
-        Alert.alert("错误", "请先登录");
+        Alert.alert(t("login_required_title"), t("login_required_body"));
         return;
       }
       
       if (status !== "idle") {
         console.warn("[startCall] Call already in progress. Current status:", status);
-        Alert.alert("提示", "已有通话在进行中，请先结束该通话");
+        Alert.alert(t("call_in_progress_title"), t("call_in_progress_body"));
         return;
       }
 
@@ -623,7 +773,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         const hasPermission = await ensureAudioPermission();
         if (!hasPermission) {
           console.warn("[startCall] Audio permission denied");
-          Alert.alert("需要麦克风权限", "请在系统设置中授予麦克风或蓝牙权限。");
+          Alert.alert(t("mic_permission_title"), t("mic_permission_body"));
           return;
         }
         console.log("[startCall] Audio permission granted");
@@ -686,12 +836,23 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("[startCall] Error name:", (error as Error)?.name);
         console.error("[startCall] Error message:", (error as Error)?.message);
         const errorMsg = error instanceof Error ? error.message : String(error);
-        Alert.alert("无法发起通话", `错误: ${errorMsg}\n请确认麦克风未被占用或已授权。`);
+        Alert.alert(
+          t("call_start_failed_title"),
+          t("call_start_failed_body", { error: errorMsg })
+        );
         resetPeerResources();
         setStatus("idle");
       }
     },
-    [createPeerConnection, ensureAudioPermission, resetPeerResources, sendMessage, status, user]
+    [
+      createPeerConnection,
+      ensureAudioPermission,
+      resetPeerResources,
+      sendMessage,
+      status,
+      t,
+      user
+    ]
   );
 
   const acceptCall = useCallback(async () => {
@@ -703,7 +864,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const hasPermission = await ensureAudioPermission();
     if (!hasPermission) {
-      Alert.alert("需要麦克风权限", "请在系统设置中授予麦克风权限。");
+      Alert.alert(t("mic_permission_title"), t("mic_permission_body"));
       return;
     }
 
@@ -733,7 +894,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         await pc.setRemoteDescription(new RTCSessionDescription(session.offer as any));
       } catch (error) {
         console.warn("setRemoteDescription failed", error);
-        Alert.alert("呼叫错误", "无法解析对方的连接请求");
+        Alert.alert(t("call_error_title"), t("call_error_invalid_invite"));
         resetCallState();
         return;
       }
@@ -755,7 +916,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       setStatus("in_call");
     } catch (error) {
       console.error("acceptCall error", error);
-      Alert.alert("无法接通", "请确认麦克风或蓝牙权限已授权。");
+      Alert.alert(t("call_accept_failed_title"), t("call_accept_failed_body"));
       resetCallState();
     }
   }, [
@@ -765,7 +926,8 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     resetCallState,
     sendMessage,
     session,
-    stopRingtone
+    stopRingtone,
+    t
   ]);
 
   const rejectCall = useCallback(() => {
@@ -805,7 +967,10 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       startCall,
       acceptCall,
       rejectCall,
-      endCall
+      endCall,
+      chatMessages,
+      sendChatMessage,
+      loadChatHistory
     }),
     [
       status,
@@ -816,7 +981,10 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       startCall,
       acceptCall,
       rejectCall,
-      endCall
+      endCall,
+      chatMessages,
+      sendChatMessage,
+      loadChatHistory
     ]
   );
 

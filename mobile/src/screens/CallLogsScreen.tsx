@@ -12,11 +12,13 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuthContext } from "../context/AuthContext";
 import { fetchCallLogs, CallLog } from "../api/callLogs";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CallLogs">;
 
 const CallLogsScreen: React.FC<Props> = () => {
   const { token } = useAuthContext();
+  const { t } = useLanguage();
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -30,11 +32,11 @@ const CallLogsScreen: React.FC<Props> = () => {
       setLogs(data);
     } catch (error) {
       console.error(error);
-      Alert.alert("加载失败", "无法获取通话记录，请稍后重试。");
+      Alert.alert(t("error_title"), t("call_logs_load_failed"));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [t, token]);
 
   useEffect(() => {
     loadLogs();
@@ -50,13 +52,13 @@ const CallLogsScreen: React.FC<Props> = () => {
 
   const getTypeLabel = useCallback((log: CallLog) => {
     if (log.direction === "outgoing") {
-      return "拨出 / Outgoing";
+      return t("call_logs_outgoing");
     }
     if (log.status === "answered") {
-      return "接听 / Answered";
+      return t("call_logs_answered");
     }
-    return "未接 / Missed";
-  }, []);
+    return t("call_logs_missed");
+  }, [t]);
 
   const renderItem = useCallback(
     ({ item }: { item: CallLog }) => {
@@ -79,10 +81,10 @@ const CallLogsScreen: React.FC<Props> = () => {
   const emptyState = useMemo(
     () => (
       <Text style={styles.emptyText}>
-        暂无通话记录 / No call logs yet.
+        {t("call_logs_empty")}
       </Text>
     ),
-    []
+    [t]
   );
 
   return (

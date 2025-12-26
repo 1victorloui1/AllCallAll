@@ -10,6 +10,7 @@ import (
 
 	"github.com/allcallall/backend/internal/auth"
 	"github.com/allcallall/backend/internal/calllog"
+	"github.com/allcallall/backend/internal/chatlog"
 	"github.com/allcallall/backend/internal/contact"
 	"github.com/allcallall/backend/internal/presence"
 	"github.com/allcallall/backend/internal/user"
@@ -23,17 +24,19 @@ type UserHandler struct {
 	presence *presence.Manager
 	contacts *contact.Service
 	callLogs *calllog.Service
+	chatLogs *chatlog.Service
 }
 
 // NewUserHandler 构造函数
 // NewUserHandler creates a UserHandler.
-func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service, callLogs *calllog.Service) *UserHandler {
+func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service, callLogs *calllog.Service, chatLogs *chatlog.Service) *UserHandler {
 	return &UserHandler{
 		logger:   log.With().Str("component", "user_handler").Logger(),
 		users:    users,
 		presence: presence,
 		contacts: contacts,
 		callLogs: callLogs,
+		chatLogs: chatLogs,
 	}
 }
 
@@ -45,6 +48,7 @@ func (h *UserHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/presence", h.handlePresence)
 	rg.POST("/change-password", h.handleChangePassword)
 	rg.GET("/call-logs", h.handleCallLogs)
+	rg.GET("/chat-logs", h.handleChatLogs)
 
 	contactsGroup := rg.Group("/contacts")
 	contactsGroup.GET("", h.handleListContacts)
@@ -200,6 +204,63 @@ func (h *UserHandler) handleCallLogs(c *gin.Context) {
 	}
 
 	JSONSuccess(c, http.StatusOK, gin.H{"call_logs": response})
+}
+
+func (h *UserHandler) handleChatLogs(c *gin.Context) {
+	claims, err := auth.GetClaimsFromContext(c)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if h.chatLogs == nil {
+		JSONError(c, http.StatusServiceUnavailable, "chat log service unavailable")
+		return
+	}
+
+	peerEmail := strings.TrimSpace(c.Query("peer_email"))
+	if peerEmail == "" {
+		JSONError(c, http.StatusBadRequest, "peer_email required")
+		return
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			if parsed > 200 {
+				parsed = 200
+			}
+			limit = parsed
+		}
+	}
+
+	logs, err := h.chatLogs.ListConversation(c.Request.Context(), claims.UserID, peerEmail, limit)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("list chat logs failed")
+		JSONError(c, http.StatusInternalServerError, "failed to list chat logs")
+		return
+	}
+
+	response := make([]gin.H, 0, len(logs))
+	for _, log := range logs {
+		direction := "incoming"
+		if log.SenderID == claims.UserID {
+			direction = "outgoing"
+		}
+		response = append(response, gin.H{
+			"id":                    log.ID,
+			"sender_email":          log.SenderEmail,
+			"sender_display_name":   log.SenderDisplayName,
+			"receiver_email":        log.ReceiverEmail,
+			"receiver_display_name": log.ReceiverDisplayName,
+			"body":                  log.Body,
+			"sent_at":               log.SentAt,
+			"created_at":            log.CreatedAt,
+			"direction":             direction,
+		})
+	}
+
+	JSONSuccess(c, http.StatusOK, gin.H{"chat_logs": response})
 }
 
 type addContactRequest struct {

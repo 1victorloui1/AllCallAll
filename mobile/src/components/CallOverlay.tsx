@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { RTCView } from "react-native-webrtc";
 
 import { useSignaling } from "../context/SignalingContext";
+import { useLanguage } from "../context/LanguageContext";
 
 const CallOverlay: React.FC = () => {
   const {
@@ -14,6 +15,7 @@ const CallOverlay: React.FC = () => {
     localStream,
     remoteStream
   } = useSignaling();
+  const { t } = useLanguage();
 
   if (status === "idle" || !session) {
     return null;
@@ -34,13 +36,20 @@ const CallOverlay: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.title}>
           {status === "connecting"
-            ? `正在呼叫 ${session.peerEmail}`
+            ? t("call_status_calling", { email: session.peerEmail })
             : status === "incoming"
-            ? `${session.peerEmail} 呼叫你`
-            : `与 ${session.peerEmail} 通话中`}
+            ? t("call_status_incoming", { email: session.peerEmail })
+            : t("call_status_in_call", { email: session.peerEmail })}
         </Text>
         <Text style={styles.subtitle}>
-          状态 / Status: {status === "connecting" ? "呼叫中" : status}
+          {t("call_status_label", {
+            status:
+              status === "connecting"
+                ? t("call_status_connecting")
+                : status === "incoming"
+                ? t("call_status_incoming_short")
+                : t("call_status_in_call_short")
+          })}
         </Text>
         <View style={styles.actions}>
           {isIncoming && status === "incoming" ? (
@@ -49,13 +58,13 @@ const CallOverlay: React.FC = () => {
                 style={[styles.button, styles.accept]}
                 onPress={acceptCall}
               >
-                <Text style={styles.buttonText}>接受 / Accept</Text>
+                <Text style={styles.buttonText}>{t("call_accept")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, styles.reject]}
                 onPress={rejectCall}
               >
-                <Text style={styles.buttonText}>拒绝 / Reject</Text>
+                <Text style={styles.buttonText}>{t("call_reject")}</Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -63,7 +72,7 @@ const CallOverlay: React.FC = () => {
               style={[styles.button, styles.reject]}
               onPress={endCall}
             >
-              <Text style={styles.buttonText}>结束 / End</Text>
+              <Text style={styles.buttonText}>{t("call_end")}</Text>
             </TouchableOpacity>
           )}
         </View>

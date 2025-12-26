@@ -14,11 +14,13 @@ import TextField from "../components/TextField";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuthContext } from "../context/AuthContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Register">;
 
 const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
   const { register } = useAuthContext();
+  const { t } = useLanguage();
   // 如果来自邮箱验证页面，会有预填的 email
   const { email: prefilledEmail } = route.params || {};
   
@@ -31,27 +33,27 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
     try {
       // 验证输入
       if (!email.trim()) {
-        Alert.alert("错误", "请输入邮箱");
+        Alert.alert(t("error_title"), t("register_error_missing_email"));
         return;
       }
 
       // 基础邮箱格式验证
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        Alert.alert("错误", "请输入有效的邮箱地址");
+        Alert.alert(t("error_title"), t("register_error_invalid_email"));
         return;
       }
 
       if (!password.trim()) {
-        Alert.alert("错误", "请输入密码");
+        Alert.alert(t("error_title"), t("register_error_missing_password"));
         return;
       }
       if (password.length < 8) {
-        Alert.alert("错误", "密码至少需要 8 个字符");
+        Alert.alert(t("error_title"), t("register_error_password_short"));
         return;
       }
       if (!displayName.trim()) {
-        Alert.alert("错误", "请输入显示名称");
+        Alert.alert(t("error_title"), t("register_error_missing_name"));
         return;
       }
 
@@ -72,11 +74,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
       }
     } catch (error) {
       console.error("Register error:", error);
-      if (error instanceof Error) {
-        Alert.alert("错误", error.message || "请检查输入信息");
-      } else {
-        Alert.alert("错误", "请检查输入信息");
-      }
+      Alert.alert(t("error_title"), t("register_error_check_input"));
     } finally {
       setLoading(false);
     }
@@ -88,21 +86,19 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
       style={styles.container}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>创建账号 / Create account</Text>
-        <Text style={styles.subtitle}>
-          通过邮箱使用 AllCallAll，开启实时通信
-        </Text>
+        <Text style={styles.title}>{t("register_title")}</Text>
+        <Text style={styles.subtitle}>{t("register_subtitle")}</Text>
       </View>
       <View style={styles.form}>
         <TextField
-          label="显示名称 / Display name"
+          label={t("register_display_name_label")}
           autoCapitalize="words"
           value={displayName}
           onChangeText={setDisplayName}
           editable={!loading}
         />
         <TextField
-          label="邮箱 / Email"
+          label={t("register_email_label")}
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -110,14 +106,14 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
           editable={!loading && !prefilledEmail}  // 邮箱已验证时禁用编辑
         />
         <TextField
-          label="密码 / Password"
+          label={t("register_password_label")}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
           editable={!loading}
         />
         <PrimaryButton
-          title={loading ? "注册中..." : "注册 / Register"}
+          title={loading ? t("register_loading") : t("register_button")}
           onPress={handleRegister}
           disabled={loading}
         />
@@ -126,7 +122,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
           style={styles.linkButton}
           disabled={loading}
         >
-          <Text style={styles.linkText}>已有账号？登录 / Already have one?</Text>
+          <Text style={styles.linkText}>{t("register_already")}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

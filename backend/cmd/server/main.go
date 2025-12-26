@@ -12,8 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/allcallall/backend/internal/auth"
-	"github.com/allcallall/backend/internal/calllog"
 	"github.com/allcallall/backend/internal/cache"
+	"github.com/allcallall/backend/internal/calllog"
+	"github.com/allcallall/backend/internal/chatlog"
 	"github.com/allcallall/backend/internal/config"
 	"github.com/allcallall/backend/internal/contact"
 	"github.com/allcallall/backend/internal/database"
@@ -67,6 +68,7 @@ func main() {
 		&models.EmailVerificationCode{},
 		&models.EmailSendLog{},
 		&models.CallLog{},
+		&models.ChatMessage{},
 	); err != nil {
 		appLogger.Fatal().Err(err).Msg("auto migrate failed")
 	}
@@ -90,6 +92,8 @@ func main() {
 	contactSvc := contact.NewService(contactRepo, userSvc)
 	callLogRepo := calllog.NewRepository(db)
 	callLogSvc := calllog.NewService(callLogRepo, userSvc, appLogger)
+	chatLogRepo := chatlog.NewRepository(db)
+	chatLogSvc := chatlog.NewService(chatLogRepo, userSvc, appLogger)
 
 	// 初始化邮件服务
 	// Initialize mail service
@@ -122,7 +126,7 @@ func main() {
 	emailHandler := handlers.NewEmailHandler(appLogger, mail.NewVerificationCodeService(db, mailSvc))
 	presenceManager := presence.NewManager(redisClient, appLogger, userSvc)
 
-	userHandler := handlers.NewUserHandler(appLogger, userSvc, presenceManager, contactSvc, callLogSvc)
+	userHandler := handlers.NewUserHandler(appLogger, userSvc, presenceManager, contactSvc, callLogSvc, chatLogSvc)
 	webrtcHandler := handlers.NewWebRTCHandler(appLogger, cfg.WebRTC)
 	signalingHub := signaling.NewHub(redisClient, appLogger, presenceManager)
 
@@ -144,6 +148,7 @@ func main() {
 	// Attach media engine to signaling hub
 	signalingHub.WithMediaEngine(mediaEngine)
 	signalingHub.WithCallLogService(callLogSvc)
+	signalingHub.WithChatLogService(chatLogSvc)
 
 	signalingHandler := handlers.NewSignalingHandler(appLogger, signalingHub)
 

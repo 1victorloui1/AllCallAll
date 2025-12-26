@@ -4,8 +4,8 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  AccessibilityInfo,
 } from "react-native";
+import { useLanguage } from "../context/LanguageContext";
 
 interface VerificationCodeInputProps {
   onCodeComplete: (code: string) => void;
@@ -24,6 +24,7 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
   codeLength = 6,
   editable = true,
 }) => {
+  const { t } = useLanguage();
   const [code, setCode] = useState<string[]>(Array(codeLength).fill(""));
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const inputRefs = useRef<TextInput[]>([]);
@@ -105,7 +106,7 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>请输入验证码</Text>
+      <Text style={styles.label}>{t("verify_code_label")}</Text>
       <View style={styles.codeInputContainer}>
         {Array.from({ length: codeLength }).map((_, index) => (
           <TextInput
@@ -129,7 +130,9 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
             }
             editable={editable}
             placeholderTextColor="#9ca3af"
-            accessibilityLabel={`验证码第 ${index + 1} 位`}
+            accessibilityLabel={t("verify_code_accessibility", {
+              index: index + 1
+            })}
           />
         ))}
       </View>

@@ -14,7 +14,8 @@ export type SignalMessageType =
   | "call.reject"
   | "call.end"
   | "ice.candidate"
-  | "call.error";
+  | "call.error"
+  | "chat.message";
 
 export interface SignalMessage {
   type: SignalMessageType;

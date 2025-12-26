@@ -27,12 +27,14 @@ import PresenceBadge from "../components/PresenceBadge";
 import CallOverlay from "../components/CallOverlay";
 import { useSignaling } from "../context/SignalingContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { useLanguage } from "../context/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Contacts">;
 
 const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const { user, token, logout } = useAuthContext();
   const { startCall, connectionReady } = useSignaling();
+  const { t } = useLanguage();
 
   const [contacts, setContacts] = useState<User[]>([]);
   const [presence, setPresence] = useState<Record<string, PresenceRecord>>({});
@@ -51,11 +53,11 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       setContacts(data);
     } catch (error) {
       console.error(error);
-      Alert.alert("拉取联系人失败", "无法加载联系人列表，请重试。");
+      Alert.alert(t("error_title"), t("contacts_reload_failed"));
     } finally {
       setLoadingContacts(false);
     }
-  }, [token]);
+  }, [t, token]);
 
   const loadPresence = useCallback(async () => {
     if (!token) {
@@ -116,22 +118,24 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       setAddModalVisible(false);
       await loadContacts();
       await loadPresence();
-      Alert.alert("联系人已添加", `${target} 已加入联系人。`);
+      Alert.alert(t("success_title"), t("contacts_add_success", { email: target }));
     } catch (error) {
       console.error(error);
-      Alert.alert("添加失败", "无法添加联系人，可能已存在或输入有误。");
+      Alert.alert(t("error_title"), t("contacts_add_failed"));
     }
-  }, [loadContacts, loadPresence, newContactEmail, token]);
+  }, [loadContacts, loadPresence, newContactEmail, t, token]);
 
   const handleRemoveContact = useCallback(
     (contact: User) => {
       Alert.alert(
-        "删除联系人",
-        `确定删除 ${contact.display_name || contact.email} 吗？`,
+        t("contacts_remove_title"),
+        t("contacts_remove_confirm", {
+          name: contact.display_name || contact.email
+        }),
         [
-          { text: "取消", style: "cancel" },
+          { text: t("cancel"), style: "cancel" },
           {
-            text: "删除",
+            text: t("contact_remove"),
             style: "destructive",
             onPress: async () => {
               if (!token) return;
@@ -141,25 +145,38 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
                 await loadPresence();
               } catch (error) {
                 console.error(error);
-                Alert.alert("删除失败", "请稍后再试。");
+                Alert.alert(t("error_title"), t("contacts_remove_failed"));
               }
             }
           }
         ]
       );
     },
-    [loadContacts, loadPresence, token]
+    [loadContacts, loadPresence, t, token]
   );
 
   const handleStartCall = useCallback(
     (email: string) => {
       if (!connectionReady) {
-        Alert.alert("正在重新连接", "信令服务暂时不可用，请稍后再试。");
+        Alert.alert(
+          t("contacts_signal_unavailable_title"),
+          t("contacts_signal_unavailable_message")
+        );
         return;
       }
       startCall(email);
     },
-    [connectionReady, startCall]
+    [connectionReady, startCall, t]
+  );
+
+  const handleOpenChat = useCallback(
+    (contact: User) => {
+      navigation.navigate("Chat", {
+        peerEmail: contact.email,
+        peerName: contact.display_name || contact.email
+      });
+    },
+    [navigation]
   );
 
   const sortedContacts = useMemo(
@@ -177,7 +194,9 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>你好, {user?.display_name || ""}</Text>
+          <Text style={styles.greeting}>
+            {t("contacts_greeting", { name: user?.display_name || "" })}
+          </Text>
           <Text style={styles.subtitle}>{user?.email}</Text>
         </View>
         <View style={styles.headerButtons}>
@@ -185,22 +204,24 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
             style={styles.callLogsButton}
             onPress={() => navigation.navigate("CallLogs")}
           >
-            <Text style={styles.callLogsText}>通话记录</Text>
+            <Text style={styles.callLogsText}>{t("contacts_call_logs")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.changePasswordButton}
             onPress={() => navigation.navigate("ChangePassword")}
           >
-            <Text style={styles.changePasswordText}>改密码</Text>
+            <Text style={styles.changePasswordText}>
+              {t("contacts_change_password")}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-            <Text style={styles.logoutText}>退出登录</Text>
+            <Text style={styles.logoutText}>{t("contacts_logout")}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.presenceCard}>
-        <Text style={styles.sectionTitle}>我的状态 / My Presence</Text>
+        <Text style={styles.sectionTitle}>{t("contacts_presence_title")}</Text>
         <PresenceBadge
           online={presence[user?.email ?? ""]?.online ?? false}
           lastSeen={presence[user?.email ?? ""]?.last_seen ?? null}
@@ -208,9 +229,9 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>联系人 / Contacts</Text>
+        <Text style={styles.sectionTitle}>{t("contacts_title")}</Text>
         <PrimaryButton
-          title="添加联系人"
+          title={t("contacts_add_button")}
           onPress={() => setAddModalVisible(true)}
           style={styles.addButton}
         />
@@ -224,6 +245,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
             contact={item}
             presence={presence[item.email]}
             onCall={handleStartCall}
+            onMessage={handleOpenChat}
             onRemove={handleRemoveContact}
           />
         )}
@@ -234,7 +256,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         ListEmptyComponent={
           !loadingContacts ? (
             <Text style={styles.emptyText}>
-              还没有联系人，点击“添加联系人”开始吧。
+              {t("contacts_empty")}
             </Text>
           ) : null
         }
@@ -248,17 +270,17 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>添加联系人</Text>
+            <Text style={styles.modalTitle}>{t("contacts_add_title")}</Text>
             <TextField
-              label="邮箱 / Email"
+              label={t("contacts_add_email_label")}
               autoCapitalize="none"
               keyboardType="email-address"
               value={newContactEmail}
               onChangeText={setNewContactEmail}
             />
-            <PrimaryButton title="添加" onPress={handleAddContact} />
+            <PrimaryButton title={t("contacts_add_confirm")} onPress={handleAddContact} />
             <PrimaryButton
-              title="取消"
+              title={t("cancel")}
               onPress={() => setAddModalVisible(false)}
               style={styles.modalCancel}
             />

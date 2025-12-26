@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/allcallall/backend/internal/calllog"
+	"github.com/allcallall/backend/internal/chatlog"
 	"github.com/allcallall/backend/internal/media"
 	"github.com/allcallall/backend/internal/presence"
 )
@@ -22,11 +24,12 @@ import (
 // 现在同时支持 WebSocket 信令和 Pion WebRTC 媒体引擎
 // Now supports both WebSocket signaling and Pion WebRTC media engine
 type Hub struct {
-	redis        *redis.Client
-	logger       zerolog.Logger
-	presence     *presence.Manager
-	mediaEngine  *media.Engine
-	callLogs     *calllog.Service
+	redis       *redis.Client
+	logger      zerolog.Logger
+	presence    *presence.Manager
+	mediaEngine *media.Engine
+	callLogs    *calllog.Service
+	chatLogs    *chatlog.Service
 
 	mu      sync.RWMutex
 	clients map[string]map[*client]struct{}
@@ -50,6 +53,7 @@ const (
 	TypeCallReject    = "call.reject"
 	TypeCallEnd       = "call.end"
 	TypeIceCandidate  = "ice.candidate"
+	TypeChatMessage   = "chat.message"
 )
 
 type client struct {
@@ -144,6 +148,7 @@ func (h *Hub) handleIncoming(ctx context.Context, fromClient *client, data []byt
 	}
 
 	h.recordCallEvent(ctx, &msg)
+	h.recordChatMessage(ctx, &msg)
 
 	encoded, err := json.Marshal(msg)
 	if err != nil {
@@ -176,6 +181,11 @@ func (h *Hub) WithCallLogService(service *calllog.Service) {
 	h.callLogs = service
 }
 
+// WithChatLogService attaches chat log service to signaling hub.
+func (h *Hub) WithChatLogService(service *chatlog.Service) {
+	h.chatLogs = service
+}
+
 func (h *Hub) recordCallEvent(ctx context.Context, msg *SignalMessage) {
 	if h.callLogs == nil {
 		return
@@ -195,6 +205,42 @@ func (h *Hub) recordCallEvent(ctx context.Context, msg *SignalMessage) {
 			h.logger.Warn().Err(err).Str("call_id", msg.CallID).Msg("record call end failed")
 		}
 	default:
+	}
+}
+
+func (h *Hub) recordChatMessage(ctx context.Context, msg *SignalMessage) {
+	if h.chatLogs == nil {
+		return
+	}
+	if msg.Type != TypeChatMessage {
+		return
+	}
+	if len(msg.Payload) == 0 {
+		return
+	}
+
+	var payload struct {
+		Text   string `json:"text"`
+		SentAt string `json:"sent_at"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.logger.Warn().Err(err).Msg("decode chat payload failed")
+		return
+	}
+	body := strings.TrimSpace(payload.Text)
+	if body == "" {
+		return
+	}
+
+	sentAt := time.Now()
+	if payload.SentAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, payload.SentAt); err == nil {
+			sentAt = parsed
+		}
+	}
+
+	if err := h.chatLogs.RecordMessage(ctx, msg.From, msg.To, body, sentAt); err != nil {
+		h.logger.Warn().Err(err).Msg("record chat message failed")
 	}
 }
 
