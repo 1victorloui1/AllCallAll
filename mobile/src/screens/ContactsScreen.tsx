@@ -1,3 +1,4 @@
+// 联系人页：联系人管理、在线状态与通话入口
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -29,13 +30,16 @@ import { useSignaling } from "../context/SignalingContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "Contacts">;
 
+// 联系人页组件
 const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const { user, token, logout } = useAuthContext();
   const { startCall, connectionReady } = useSignaling();
   const { t } = useLanguage();
 
+  // 列表数据与 UI 状态
   const [contacts, setContacts] = useState<User[]>([]);
   const [presence, setPresence] = useState<Record<string, PresenceRecord>>({});
   const [loadingContacts, setLoadingContacts] = useState(false);
@@ -43,6 +47,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const [isAddModalVisible, setAddModalVisible] = useState(false);
   const [newContactEmail, setNewContactEmail] = useState("");
 
+  // 拉取联系人列表
   const loadContacts = useCallback(async () => {
     if (!token) {
       return;
@@ -59,6 +64,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [t, token]);
 
+  // 拉取在线状态
   const loadPresence = useCallback(async () => {
     if (!token) {
       return;
@@ -83,19 +89,23 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [contacts, token, user?.email]);
 
+  // 首次进入加载联系人
   useEffect(() => {
     loadContacts();
   }, [loadContacts]);
 
+  // 定时刷新在线状态
   useEffect(() => {
     const interval = setInterval(loadPresence, 10000);
     return () => clearInterval(interval);
   }, [loadPresence]);
 
+  // 联系人变化时刷新在线状态
   useEffect(() => {
     loadPresence();
   }, [contacts, loadPresence]);
 
+  // 下拉刷新
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadContacts();
@@ -103,6 +113,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     setRefreshing(false);
   }, [loadContacts, loadPresence]);
 
+  // 添加联系人
   const handleAddContact = useCallback(async () => {
     if (!token) {
       return;
@@ -125,6 +136,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [loadContacts, loadPresence, newContactEmail, t, token]);
 
+  // 删除联系人
   const handleRemoveContact = useCallback(
     (contact: User) => {
       Alert.alert(
@@ -155,6 +167,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     [loadContacts, loadPresence, t, token]
   );
 
+  // 发起通话（需要信令连接可用）
   const handleStartCall = useCallback(
     (email: string) => {
       if (!connectionReady) {
@@ -169,6 +182,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     [connectionReady, startCall, t]
   );
 
+  // 进入聊天页面
   const handleOpenChat = useCallback(
     (contact: User) => {
       navigation.navigate("Chat", {
@@ -179,6 +193,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     [navigation]
   );
 
+  // 联系人排序（按显示名/邮箱）
   const sortedContacts = useMemo(
     () =>
       [...contacts].sort((a, b) =>
@@ -192,6 +207,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      {/* 顶部用户信息与快捷入口 */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>
@@ -220,6 +236,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
+      {/* 自己的在线状态 */}
       <View style={styles.presenceCard}>
         <Text style={styles.sectionTitle}>{t("contacts_presence_title")}</Text>
         <PresenceBadge
@@ -228,6 +245,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
+      {/* 联系人区标题与添加按钮 */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{t("contacts_title")}</Text>
         <PrimaryButton
@@ -237,6 +255,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
+      {/* 联系人列表 */}
       <FlatList
         data={sortedContacts}
         keyExtractor={(item) => String(item.id)}
@@ -262,6 +281,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         }
       />
 
+      {/* 添加联系人弹窗 */}
       <Modal
         visible={isAddModalVisible}
         transparent
@@ -288,11 +308,13 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </Modal>
 
+      {/* 通话悬浮层 */}
       <CallOverlay />
     </View>
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

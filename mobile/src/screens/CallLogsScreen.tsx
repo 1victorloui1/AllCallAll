@@ -1,3 +1,4 @@
+// 通话记录页：拉取并展示历史通话
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -14,14 +15,18 @@ import { fetchCallLogs, CallLog } from "../api/callLogs";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "CallLogs">;
 
+// 通话记录页组件
 const CallLogsScreen: React.FC<Props> = () => {
   const { token } = useAuthContext();
   const { t } = useLanguage();
+  // 列表数据与加载状态
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // 拉取通话记录
   const loadLogs = useCallback(async () => {
     if (!token) {
       return;
@@ -38,10 +43,12 @@ const CallLogsScreen: React.FC<Props> = () => {
     }
   }, [t, token]);
 
+  // 进入页面自动加载
   useEffect(() => {
     loadLogs();
   }, [loadLogs]);
 
+  // 时间格式化
   const formatTime = useCallback((value: string) => {
     try {
       return new Date(value).toLocaleString();
@@ -50,6 +57,7 @@ const CallLogsScreen: React.FC<Props> = () => {
     }
   }, []);
 
+  // 生成通话类型/状态文案
   const getTypeLabel = useCallback((log: CallLog) => {
     if (log.direction === "outgoing") {
       return t("call_logs_outgoing");
@@ -60,6 +68,7 @@ const CallLogsScreen: React.FC<Props> = () => {
     return t("call_logs_missed");
   }, [t]);
 
+  // 渲染单条通话记录
   const renderItem = useCallback(
     ({ item }: { item: CallLog }) => {
       const name = item.peer_display_name?.trim() || item.peer_email;
@@ -78,6 +87,7 @@ const CallLogsScreen: React.FC<Props> = () => {
     [formatTime, getTypeLabel]
   );
 
+  // 空状态展示
   const emptyState = useMemo(
     () => (
       <Text style={styles.emptyText}>
@@ -89,6 +99,7 @@ const CallLogsScreen: React.FC<Props> = () => {
 
   return (
     <View style={styles.container}>
+      {/* 通话记录列表 */}
       <FlatList
         data={logs}
         keyExtractor={(item) => String(item.id)}
@@ -103,6 +114,7 @@ const CallLogsScreen: React.FC<Props> = () => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

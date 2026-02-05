@@ -1,3 +1,4 @@
+// 路由入口：根据登录态切换导航栈
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ActivityIndicator, View } from "react-native";
@@ -12,6 +13,7 @@ import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import CallLogsScreen from "../screens/CallLogsScreen";
 import ChatScreen from "../screens/ChatScreen";
 
+// 路由参数类型定义
 export type RootStackParamList = {
   Login: undefined;
   Register: { email?: string };
@@ -22,8 +24,10 @@ export type RootStackParamList = {
   Chat: { peerEmail: string; peerName?: string };
 };
 
+// 创建原生栈导航器
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// 启动时的加载占位
 const LoadingFallback = () => (
   <View
     style={{
@@ -36,16 +40,19 @@ const LoadingFallback = () => (
   </View>
 );
 
+// App 导航组件：根据 token 决定进入登录或主界面
 const AppNavigator: React.FC = () => {
   const { token, loading } = useAuthContext();
   const { t } = useLanguage();
 
+  // 等待本地登录态加载完成
   if (loading) {
     return <LoadingFallback />;
   }
 
   return (
     <Stack.Navigator>
+      {/* 已登录：主功能页面 */}
       {token ? (
         <>
           <Stack.Screen
@@ -70,6 +77,7 @@ const AppNavigator: React.FC = () => {
           />
         </>
       ) : (
+        /* 未登录：认证流程页面 */
         <>
           <Stack.Screen
             name="Login"

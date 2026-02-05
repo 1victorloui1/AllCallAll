@@ -1,3 +1,4 @@
+// 修改密码页：校验输入并提交改密请求
 import React, { useMemo, useState } from "react";
 import {
   View,
@@ -18,16 +19,22 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { changePassword, ChangePasswordRequest } from "../api/users";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "ChangePassword">;
 
+// 语言函数类型（用于校验提示）
+type Translator = ReturnType<typeof useLanguage>["t"];
+
+// 密码校验结果结构
 interface PasswordValidation {
   isValid: boolean;
   errors: string[];
 }
 
+// 密码规则校验
 const validatePassword = (
   password: string,
-  t: (key: string) => string
+  t: Translator
 ): PasswordValidation => {
   const errors: string[] = [];
 
@@ -59,16 +66,18 @@ const validatePassword = (
   };
 };
 
+// 修改密码页组件
 const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
   const { token } = useAuthContext();
   const { t } = useLanguage();
+  // 表单状态
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // 检查 token 是否存在，如果不存在则跳转回登陆
+  // 检查 token 是否存在，如果不存在则返回上一页
   React.useEffect(() => {
     if (!token) {
       Alert.alert(t("auth_expired_title"), t("auth_expired_body"));
@@ -76,6 +85,7 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [navigation, t, token]);
 
+  // 新密码校验结果与表单整体合法性
   const newPasswordValidation = useMemo(
     () => validatePassword(newPassword, t),
     [newPassword, t]
@@ -86,6 +96,7 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
     newPasswordValidation.isValid &&
     passwordsMatch;
 
+  // 提交改密请求
   const handleChangePassword = async () => {
     if (!isFormValid) {
       Alert.alert(
@@ -133,11 +144,13 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
       style={styles.container}
     >
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* 标题区 */}
         <View style={styles.header}>
           <Text style={styles.title}>{t("change_password_title")}</Text>
           <Text style={styles.subtitle}>{t("change_password_subtitle")}</Text>
         </View>
 
+        {/* 表单区 */}
         <View style={styles.form}>
           <View style={styles.fieldContainer}>
             <Text style={styles.label}>{t("change_password_old_label")}</Text>
@@ -205,6 +218,7 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
 
+          {/* 密码显示/隐藏开关 */}
           <TouchableOpacity
             onPress={() => setShowPassword(!showPassword)}
             style={styles.toggleButton}
@@ -214,12 +228,14 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
+          {/* 提交按钮 */}
           <PrimaryButton
             title={loading ? t("change_password_loading") : t("change_password_button")}
             onPress={handleChangePassword}
             disabled={!isFormValid || loading}
           />
 
+          {/* 取消返回 */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.cancelButton}
@@ -232,6 +248,7 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

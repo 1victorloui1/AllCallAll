@@ -1,21 +1,24 @@
+// 邮箱验证码相关 API 请求封装
 import axios, { AxiosError } from "axios";
 import { API_BASE_URL, REQUEST_TIMEOUT } from "../config";
 
-// API 响应类型定义
+// 通用 API 响应结构
 export interface ApiResponse<T> {
   data?: T;
   message?: string;
 }
 
+// 发送验证码响应结构
 export interface SendVerificationCodeResponse {
   message: string;
 }
 
+// 校验验证码响应结构
 export interface VerifyCodeResponse {
   message: string;
 }
 
-// 创建 API 实例
+// 创建独立的 Axios 实例（用于验证码接口）
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: REQUEST_TIMEOUT,
@@ -28,7 +31,7 @@ const apiClient = axios.create({
 export const sendVerificationCode = async (email: string): Promise<void> => {
   try {
     const response = await apiClient.post<ApiResponse<SendVerificationCodeResponse>>(
-      "/email/send-verification-code",
+      "/email/send-verification-code",// "/email/send-verification-code"，实际会拼成：API_BASE_URL + "/email/send-verification-code"
       { email }
     );
     console.log("[Email API] Send code response:", response.data);

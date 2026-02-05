@@ -1,3 +1,4 @@
+// 通话悬浮层：展示通话状态并提供接听/挂断操作
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { RTCView } from "react-native-webrtc";
@@ -5,6 +6,7 @@ import { RTCView } from "react-native-webrtc";
 import { useSignaling } from "../context/SignalingContext";
 import { useLanguage } from "../context/LanguageContext";
 
+// 通话浮层组件
 const CallOverlay: React.FC = () => {
   const {
     status,
@@ -17,14 +19,17 @@ const CallOverlay: React.FC = () => {
   } = useSignaling();
   const { t } = useLanguage();
 
+  // 空闲或无会话时不显示
   if (status === "idle" || !session) {
     return null;
   }
 
+  // 判断是否是来电
   const isIncoming = session.direction === "incoming";
 
   return (
     <View style={styles.container} pointerEvents="box-none">
+      {/* 挂载音频流（用隐藏 RTCView 保持音频输出） */}
       <View style={styles.audioAttachments} pointerEvents="none">
         {localStream ? (
           <RTCView streamURL={localStream.toURL()} style={styles.hiddenVideo} />
@@ -33,6 +38,7 @@ const CallOverlay: React.FC = () => {
           <RTCView streamURL={remoteStream.toURL()} style={styles.hiddenVideo} />
         ) : null}
       </View>
+      {/* 状态卡片 */}
       <View style={styles.card}>
         <Text style={styles.title}>
           {status === "connecting"
@@ -51,6 +57,7 @@ const CallOverlay: React.FC = () => {
                 : t("call_status_in_call_short")
           })}
         </Text>
+        {/* 操作按钮 */}
         <View style={styles.actions}>
           {isIncoming && status === "incoming" ? (
             <>
@@ -81,6 +88,7 @@ const CallOverlay: React.FC = () => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     position: "absolute",

@@ -1,3 +1,4 @@
+// 验证码输入组件：多格输入与自动跳转
 import React, { useState, useRef } from "react";
 import {
   View,
@@ -7,6 +8,7 @@ import {
 } from "react-native";
 import { useLanguage } from "../context/LanguageContext";
 
+// 组件参数类型
 interface VerificationCodeInputProps {
   onCodeComplete: (code: string) => void;
   onCodeChange?: (code: string) => void;
@@ -25,6 +27,7 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
   editable = true,
 }) => {
   const { t } = useLanguage();
+  // 维护每一位验证码与焦点状态
   const [code, setCode] = useState<string[]>(Array(codeLength).fill(""));
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const inputRefs = useRef<TextInput[]>([]);
@@ -107,6 +110,7 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{t("verify_code_label")}</Text>
+      {/* 验证码格子输入 */}
       <View style={styles.codeInputContainer}>
         {Array.from({ length: codeLength }).map((_, index) => (
           <TextInput
@@ -140,6 +144,7 @@ const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",

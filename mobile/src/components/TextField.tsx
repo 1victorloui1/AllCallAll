@@ -1,3 +1,4 @@
+// 通用文本输入组件：带标签与错误提示
 import React from "react";
 import {
   StyleSheet,
@@ -12,6 +13,7 @@ interface Props extends TextInputProps {
   error?: string | null;
 }
 
+// 输入框组件
 const TextField: React.FC<Props> = ({ label, error, style, ...props }) => {
   return (
     <View style={styles.container}>
@@ -26,6 +28,7 @@ const TextField: React.FC<Props> = ({ label, error, style, ...props }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     marginBottom: 12

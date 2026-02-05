@@ -1,3 +1,4 @@
+// 登录页面：输入账号密码、切换语言并触发登录
 import React, { useState } from "react";
 import {
   View,
@@ -16,15 +17,19 @@ import { useAuthContext } from "../context/AuthContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
+// 登录页组件
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const { login } = useAuthContext();
   const { t, language, setLanguage } = useLanguage();
+  // 表单与加载状态
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 提交登录
   const handleLogin = async () => {
     try {
       setLoading(true);
@@ -42,6 +47,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.container}
     >
+      {/* 标题与语言切换 */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>AllCallAll</Text>
@@ -82,6 +88,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         </View>
         <Text style={styles.subtitle}>{t("login_subtitle")}</Text>
       </View>
+      {/* 登录表单 */}
       <View style={styles.form}>
         <TextField
           label={t("login_email_label")}
@@ -112,6 +119,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

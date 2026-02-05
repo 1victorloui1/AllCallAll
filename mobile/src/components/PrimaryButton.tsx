@@ -1,3 +1,4 @@
+// 通用主按钮组件：统一按钮样式与点击行为
 import React from "react";
 import {
   TouchableOpacity,
@@ -14,6 +15,7 @@ interface Props {
   disabled?: boolean;
 }
 
+// 主按钮组件
 const PrimaryButton: React.FC<Props> = ({ title, onPress, style, disabled }) => {
   return (
     <TouchableOpacity
@@ -27,6 +29,7 @@ const PrimaryButton: React.FC<Props> = ({ title, onPress, style, disabled }) => 
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   button: {
     backgroundColor: "#2563eb",

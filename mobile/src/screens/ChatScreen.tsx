@@ -1,3 +1,4 @@
+// 聊天页面：展示历史消息并发送文本/表情
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -15,8 +16,10 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { useSignaling, ChatMessage } from "../context/SignalingContext";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "Chat">;
 
+// 常用表情列表
 const EMOJIS = [
   "😀",
   "😁",
@@ -36,19 +39,23 @@ const EMOJIS = [
   "🔥"
 ];
 
+// 聊天页组件
 const ChatScreen: React.FC<Props> = ({ route }) => {
   const { peerEmail, peerName } = route.params;
   const { chatMessages, sendChatMessage, loadChatHistory } = useSignaling();
   const { t } = useLanguage();
+  // 输入与显示状态
   const [message, setMessage] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
+  // 当前会话消息列表
   const messages = useMemo(
     () => chatMessages[peerEmail] ?? [],
     [chatMessages, peerEmail]
   );
 
+  // 时间格式化
   const formatTime = useCallback((value: string) => {
     try {
       return new Date(value).toLocaleString();
@@ -57,6 +64,7 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
     }
   }, []);
 
+  // 发送消息
   const handleSend = useCallback(() => {
     if (!message.trim()) {
       return;
@@ -65,10 +73,12 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
     setMessage("");
   }, [message, peerEmail, sendChatMessage]);
 
+  // 点击表情追加到输入框
   const handleEmojiPress = useCallback((emoji: string) => {
     setMessage((current) => `${current}${emoji}`);
   }, []);
 
+  // 新消息到达后滚动到底部
   useEffect(() => {
     if (!messages.length) {
       return;
@@ -79,10 +89,12 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
     return () => clearTimeout(timer);
   }, [messages.length]);
 
+  // 进入页面时加载历史记录
   useEffect(() => {
     void loadChatHistory(peerEmail);
   }, [loadChatHistory, peerEmail]);
 
+  // 渲染单条消息（区分左右与样式）
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isOutgoing = item.direction === "outgoing";
@@ -128,11 +140,13 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.container}
     >
+      {/* 顶部会话信息 */}
       <View style={styles.header}>
         <Text style={styles.name}>{peerName || peerEmail}</Text>
         <Text style={styles.email}>{peerEmail}</Text>
       </View>
 
+      {/* 消息列表 */}
       <FlatList
         ref={listRef}
         data={messages}
@@ -147,6 +161,7 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
         }
       />
 
+      {/* 表情面板 */}
       {showEmoji ? (
         <View style={styles.emojiPanel}>
           {EMOJIS.map((emoji) => (
@@ -161,6 +176,7 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
         </View>
       ) : null}
 
+      {/* 输入区 */}
       <View style={styles.inputRow}>
         <TouchableOpacity
           style={styles.emojiToggle}
@@ -191,6 +207,7 @@ const ChatScreen: React.FC<Props> = ({ route }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -10,9 +10,9 @@ import (
 // Claims JWT 声明
 // Claims extends RegisteredClaims with user information.
 type Claims struct {
-	UserID uint64 `json:"user_id"`
-	Email  string `json:"email"`
-	jwt.RegisteredClaims
+	UserID               uint64 `json:"user_id"`
+	Email                string `json:"email"`
+	jwt.RegisteredClaims        //表示把 JWT 标准字段直接嵌入到自定义 Claims 里
 }
 
 // Manager JWT 管理器

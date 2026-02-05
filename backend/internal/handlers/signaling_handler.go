@@ -15,8 +15,8 @@ import (
 // SignalingHandler upgrades HTTP requests to WebSocket for signaling.
 type SignalingHandler struct {
 	logger   zerolog.Logger
-	hub      *signaling.Hub
-	upgrader websocket.Upgrader
+	hub      *signaling.Hub     //信令中心（负责：连接注册、消息路由、广播/点对点转发）
+	upgrader websocket.Upgrader //gorilla/websocket 提供的“升级器”，专门把 HTTP 升级为 WebSocket
 }
 
 // NewSignalingHandler 构造函数
@@ -43,14 +43,14 @@ func (h *SignalingHandler) Handle(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info().Str("email", claims.Email).Msg("websocket upgrade attempt")
+	h.logger.Info().Str("email", claims.Email).Msg("websocket upgrade attempt") //写升级日志
 
-	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil) //正式执行升级，执行完毕后就保持websocket连接了
 	if err != nil {
-		h.logger.Error().Err(err).Msg("failed to upgrade websocket")
+		h.logger.Error().Err(err).Msg("failed to upgrade websocket") //升级失败写日志
 		return
 	}
 
 	h.logger.Info().Str("email", claims.Email).Msg("websocket connection established")
-	h.hub.HandleConnection(c.Request.Context(), claims.Email, conn)
+	h.hub.HandleConnection(c.Request.Context(), claims.Email, conn) //websocket建立成功后，把连接交给 Hub 管理
 }

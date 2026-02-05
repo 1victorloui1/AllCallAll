@@ -1,3 +1,4 @@
+// 邮箱验证码页面：发送验证码与校验流程
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -99,7 +100,6 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
       // 如果是从注册流程来的，需要调用 onVerified 回调并完成注册
       if (onVerified) {
         // 从注册流程来，第二步是提供注册信息
-        // 帮割 email 地址，让用户冒充其他信息
         navigation.navigate("Register", { email: email.trim().toLowerCase() });
       } else {
         // 单纯邮箱验证流程，正常返回
@@ -142,11 +142,13 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* 标题与说明 */}
           <View style={styles.header}>
             <Text style={styles.title}>{t("verify_title")}</Text>
             <Text style={styles.subtitle}>{t("verify_subtitle")}</Text>
           </View>
 
+          {/* 邮箱输入与发送按钮 */}
           <View style={styles.form}>
             <TextField
               label={t("register_email_label")}
@@ -187,6 +189,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* 标题与提示 */}
         <View style={styles.header}>
           <Text style={styles.title}>{t("verify_title_code")}</Text>
           <Text style={styles.subtitle}>
@@ -194,6 +197,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           </Text>
         </View>
 
+        {/* 验证码输入与确认按钮 */}
         <View style={styles.form}>
           <VerificationCodeInput
             codeLength={6}
@@ -207,10 +211,11 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
 
           <PrimaryButton
             title={loading ? t("verify_loading") : t("verify_button")}
-            onPress={handleVerifyCode}
+            onPress={() => handleVerifyCode()}
             disabled={loading || code.length !== 6}
           />
 
+          {/* 重新发送逻辑：倒计时 or 按钮 */}
           <View style={styles.resendContainer}>
             {countdown > 0 ? (
               <Text style={styles.countdownText}>
@@ -243,6 +248,7 @@ const EmailVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,

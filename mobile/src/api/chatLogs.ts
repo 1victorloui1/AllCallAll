@@ -1,5 +1,7 @@
+// 聊天记录 API：获取与指定用户的历史消息
 import { createApiClient } from "./client";
 
+// 聊天记录结构
 export interface ChatLog {
   id: number;
   sender_email: string;
@@ -12,6 +14,7 @@ export interface ChatLog {
   direction: "incoming" | "outgoing";
 }
 
+// 获取聊天记录（默认 50 条）
 export const fetchChatLogs = async (
   token: string,
   peerEmail: string,

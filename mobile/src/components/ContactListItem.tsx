@@ -1,3 +1,4 @@
+// 联系人列表项：展示用户信息与操作按钮
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 
@@ -5,6 +6,7 @@ import { User } from "../api/users";
 import PresenceBadge from "./PresenceBadge";
 import { useLanguage } from "../context/LanguageContext";
 
+// 组件参数类型
 interface Props {
   contact: User;
   presence?: {
@@ -16,6 +18,7 @@ interface Props {
   onRemove: (contact: User) => void;
 }
 
+// 联系人条目组件
 const ContactListItem: React.FC<Props> = ({
   contact,
   presence,
@@ -27,6 +30,7 @@ const ContactListItem: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
+      {/* 基本信息区 */}
       <View style={styles.info}>
         <Text style={styles.name}>{contact.display_name || contact.email}</Text>
         <Text style={styles.email}>{contact.email}</Text>
@@ -35,6 +39,7 @@ const ContactListItem: React.FC<Props> = ({
           lastSeen={presence?.last_seen ?? null}
         />
       </View>
+      {/* 操作按钮区 */}
       <View style={styles.actions}>
         <View style={styles.actionColumn}>
           <TouchableOpacity
@@ -61,6 +66,7 @@ const ContactListItem: React.FC<Props> = ({
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     backgroundColor: "#fff",

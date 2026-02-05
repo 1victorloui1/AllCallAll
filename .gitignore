@@ -39,3 +39,6 @@ yarn-error.log*
 # Assistant Docs
 docs/mobile/*.apk
 mobile/android/react-settings-plugin/bin/
+
+*.apk
+mobile/**/*.apk

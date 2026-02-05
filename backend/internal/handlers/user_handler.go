@@ -1,3 +1,4 @@
+// 用户相关处理器：个人信息、联系人、在线状态与日志接口
 package handlers
 
 import (
@@ -56,7 +57,9 @@ func (h *UserHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	contactsGroup.DELETE("/:id", h.handleRemoveContact)
 }
 
+// handleMe 获取当前用户信息
 func (h *UserHandler) handleMe(c *gin.Context) {
+	// 从 JWT 中取出用户声明
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
@@ -70,6 +73,7 @@ func (h *UserHandler) handleMe(c *gin.Context) {
 		return
 	}
 
+	// 查询用户信息并返回
 	JSONSuccess(c, http.StatusOK, gin.H{
 		"user": gin.H{
 			"id":           userModel.ID,
@@ -79,13 +83,16 @@ func (h *UserHandler) handleMe(c *gin.Context) {
 	})
 }
 
+// handleSearch 按邮箱关键字搜索用户
 func (h *UserHandler) handleSearch(c *gin.Context) {
+	// 需要登录才能搜索
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
+	// 空搜索直接返回空数组
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
 		JSONSuccess(c, http.StatusOK, gin.H{"results": []userDTO{}})
@@ -99,6 +106,7 @@ func (h *UserHandler) handleSearch(c *gin.Context) {
 		return
 	}
 
+	// 查询并过滤自己
 	response := make([]userDTO, 0, len(results))
 	for _, u := range results {
 		// 不返回自己
@@ -115,13 +123,16 @@ func (h *UserHandler) handleSearch(c *gin.Context) {
 	JSONSuccess(c, http.StatusOK, gin.H{"results": response})
 }
 
+// handlePresence 批量获取在线状态
 func (h *UserHandler) handlePresence(c *gin.Context) {
+	// 需要登录才能查询在线状态
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
+	// 解析查询参数 emails（为空则只查自己）
 	var emails []string
 	raw := strings.TrimSpace(c.Query("emails"))
 	if raw == "" {
@@ -145,6 +156,7 @@ func (h *UserHandler) handlePresence(c *gin.Context) {
 		return
 	}
 
+	// 获取在线状态并组装响应
 	resp := make([]gin.H, 0, len(statuses))
 	for _, email := range emails {
 		status := statuses[email]
@@ -158,7 +170,9 @@ func (h *UserHandler) handlePresence(c *gin.Context) {
 	JSONSuccess(c, http.StatusOK, gin.H{"presence": resp})
 }
 
+// handleCallLogs 获取通话记录
 func (h *UserHandler) handleCallLogs(c *gin.Context) {
+	// 需要登录才能查看
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
@@ -170,6 +184,7 @@ func (h *UserHandler) handleCallLogs(c *gin.Context) {
 		return
 	}
 
+	// 读取并限制数量
 	limit := 50
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -187,6 +202,7 @@ func (h *UserHandler) handleCallLogs(c *gin.Context) {
 		return
 	}
 
+	// 查询通话记录并转换为响应结构
 	response := make([]gin.H, 0, len(logs))
 	for _, log := range logs {
 		response = append(response, gin.H{
@@ -206,7 +222,9 @@ func (h *UserHandler) handleCallLogs(c *gin.Context) {
 	JSONSuccess(c, http.StatusOK, gin.H{"call_logs": response})
 }
 
+// handleChatLogs 获取聊天记录
 func (h *UserHandler) handleChatLogs(c *gin.Context) {
+	// 需要登录才能查看
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
@@ -218,12 +236,14 @@ func (h *UserHandler) handleChatLogs(c *gin.Context) {
 		return
 	}
 
+	// 读取对话对象
 	peerEmail := strings.TrimSpace(c.Query("peer_email"))
 	if peerEmail == "" {
 		JSONError(c, http.StatusBadRequest, "peer_email required")
 		return
 	}
 
+	// 读取并限制数量
 	limit := 50
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -241,6 +261,7 @@ func (h *UserHandler) handleChatLogs(c *gin.Context) {
 		return
 	}
 
+	// 查询聊天记录并转换为响应结构
 	response := make([]gin.H, 0, len(logs))
 	for _, log := range logs {
 		direction := "incoming"
@@ -263,23 +284,28 @@ func (h *UserHandler) handleChatLogs(c *gin.Context) {
 	JSONSuccess(c, http.StatusOK, gin.H{"chat_logs": response})
 }
 
+// 添加联系人请求体
 type addContactRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
+// handleAddContact 通过邮箱添加联系人
 func (h *UserHandler) handleAddContact(c *gin.Context) {
+	// 需要登录才能添加联系人
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
+	// 解析请求体
 	var req addContactRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// 调用联系人服务完成添加
 	if err := h.contacts.AddByEmail(c.Request.Context(), claims.UserID, claims.Email, strings.TrimSpace(req.Email)); err != nil {
 		switch err {
 		case contact.ErrContactExists:
@@ -293,10 +319,13 @@ func (h *UserHandler) handleAddContact(c *gin.Context) {
 		return
 	}
 
+	// 成功响应
 	JSONSuccess(c, http.StatusCreated, gin.H{"success": true})
 }
 
+// handleListContacts 获取联系人列表
 func (h *UserHandler) handleListContacts(c *gin.Context) {
+	// 需要登录才能查看联系人
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
@@ -310,6 +339,7 @@ func (h *UserHandler) handleListContacts(c *gin.Context) {
 		return
 	}
 
+	// 查询联系人并转换为响应结构
 	response := make([]userDTO, 0, len(contacts))
 	for _, u := range contacts {
 		response = append(response, userDTO{
@@ -322,13 +352,16 @@ func (h *UserHandler) handleListContacts(c *gin.Context) {
 	JSONSuccess(c, http.StatusOK, gin.H{"contacts": response})
 }
 
+// handleRemoveContact 删除联系人
 func (h *UserHandler) handleRemoveContact(c *gin.Context) {
+	// 需要登录才能删除联系人
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
+	// 解析联系人 ID
 	idParam := c.Param("id")
 	contactID, err := strconv.ParseUint(idParam, 10, 64)
 	if err != nil {
@@ -336,34 +369,41 @@ func (h *UserHandler) handleRemoveContact(c *gin.Context) {
 		return
 	}
 
+	// 执行删除
 	if err := h.contacts.Remove(c.Request.Context(), claims.UserID, contactID); err != nil {
 		h.logger.Error().Err(err).Uint64("contact_id", contactID).Msg("remove contact failed")
 		JSONError(c, http.StatusInternalServerError, "failed to remove contact")
 		return
 	}
 
+	// 成功响应
 	JSONSuccess(c, http.StatusOK, gin.H{"success": true})
 }
 
+// 改密请求体
 type changePasswordRequest struct {
 	OldPassword     string `json:"old_password" binding:"required"`
 	NewPassword     string `json:"new_password" binding:"required"`
 	ConfirmPassword string `json:"confirm_password" binding:"required"`
 }
 
+// handleChangePassword 修改密码
 func (h *UserHandler) handleChangePassword(c *gin.Context) {
+	// 需要登录才能修改密码
 	claims, err := auth.GetClaimsFromContext(c)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
+	// 解析请求体
 	var req changePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// 调用用户服务完成改密
 	err = h.users.ChangePassword(c.Request.Context(), claims.UserID, user.ChangePasswordInput{
 		OldPassword:     req.OldPassword,
 		NewPassword:     req.NewPassword,
@@ -395,5 +435,6 @@ func (h *UserHandler) handleChangePassword(c *gin.Context) {
 		return
 	}
 
+	// 成功响应
 	JSONSuccess(c, http.StatusOK, gin.H{"message": "password changed successfully"})
 }

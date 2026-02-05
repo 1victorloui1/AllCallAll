@@ -1,12 +1,15 @@
+// WebSocket 信令客户端：封装连接、重连与消息派发
 import mitt from "mitt";
 
 import { WS_URL } from "../config";
 
+// SDP 描述负载
 export type SessionDescriptionPayload = {
   type: "offer" | "answer";
   sdp: string;
 };
 
+// 支持的信令消息类型
 export type SignalMessageType =
   | "call.invite"
   | "call.invite.ack"
@@ -17,6 +20,7 @@ export type SignalMessageType =
   | "call.error"
   | "chat.message";
 
+// 通用信令消息结构
 export interface SignalMessage {
   type: SignalMessageType;
   call_id?: string;
@@ -25,6 +29,7 @@ export interface SignalMessage {
   payload?: Record<string, unknown> | RTCIceCandidateInit | SessionDescriptionPayload | null;
 }
 
+// 事件总线类型定义
 type Events = {
   open: undefined;
   close: { code: number; reason?: string };
@@ -32,6 +37,7 @@ type Events = {
   error: Error;
 };
 
+// 信令客户端：负责 WS 连接、重连与消息队列
 export class SignalingClient {
   private token: string;
   private ws: WebSocket | null = null;
@@ -45,6 +51,7 @@ export class SignalingClient {
     this.token = token;
   }
 
+  // 建立连接
   connect() {
     if (this.ws) {
       return;
@@ -54,6 +61,7 @@ export class SignalingClient {
     this.openSocket();
   }
 
+  // 连接恢复后，补发队列消息
   private flushPendingMessages() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
@@ -78,6 +86,7 @@ export class SignalingClient {
     }
   }
 
+  // 打开 WebSocket 连接并绑定事件
   private openSocket() {
     if (this.ws) {
       return;
@@ -114,6 +123,7 @@ export class SignalingClient {
     };
   }
 
+  // 发送信令消息（断线时进入队列）
   send(message: SignalMessage): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       if (this.pendingMessages.length >= SignalingClient.MAX_PENDING_MESSAGES) {
@@ -129,6 +139,7 @@ export class SignalingClient {
     return true;
   }
 
+  // 主动断开连接并清理
   disconnect() {
     this.shouldReconnect = false;
     if (this.reconnectTimer) {
@@ -142,14 +153,17 @@ export class SignalingClient {
     this.pendingMessages = [];
   }
 
+  // 订阅事件
   on<T extends keyof Events>(event: T, handler: (value: Events[T]) => void) {
     this.emitter.on(event, handler);
   }
 
+  // 取消订阅
   off<T extends keyof Events>(event: T, handler: (value: Events[T]) => void) {
     this.emitter.off(event, handler);
   }
 
+  // 清理 WebSocket 句柄
   private cleanup() {
     if (this.ws) {
       this.ws.onopen = null;

@@ -1,3 +1,4 @@
+// 信令与通话核心：管理 WebSocket、WebRTC、铃声与聊天状态
 import React, {
   createContext,
   useCallback,
@@ -17,8 +18,7 @@ import {
   RTCPeerConnection,
   RTCIceCandidate,
   RTCSessionDescription,
-  mediaDevices as webrtcMediaDevices,
-  RTCIceServer
+  mediaDevices as webrtcMediaDevices
 } from "react-native-webrtc";
 import { Audio } from "expo-av";
 
@@ -28,12 +28,16 @@ import { fetchWebRTCConfig } from "../api/webrtc";
 import { useAuthContext } from "./AuthContext";
 import { useLanguage } from "./LanguageContext";
 
+// 通话方向
 type CallDirection = "incoming" | "outgoing";
 
+// SDP 描述
 type SessionDescriptionPayload = RTCSessionDescriptionInit;
 
+// ICE 候选
 type IceCandidatePayload = RTCIceCandidateInit;
 
+// 当前通话会话
 interface CallSession {
   callId: string;
   peerEmail: string;
@@ -41,8 +45,10 @@ interface CallSession {
   offer?: SessionDescriptionPayload;
 }
 
+// 通话状态
 type CallStatus = "idle" | "connecting" | "incoming" | "in_call";
 
+// 聊天消息结构（本地展示使用）
 export type ChatMessage = {
   id: string;
   from: string;
@@ -52,9 +58,19 @@ export type ChatMessage = {
   direction: "incoming" | "outgoing";
 };
 
+// ICE 服务器配置结构（react-native-webrtc 类型缺失时的兼容定义）
+type RTCIceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+  credentialType?: string;
+};
+
+// 聊天消息去重键
 const chatMessageKey = (message: ChatMessage) =>
   `${message.from}|${message.to}|${message.sentAt}|${message.body}`;
 
+// 聊天消息按时间排序（升序）
 const normalizeChatMessages = (messages: ChatMessage[]) => {
   const sorted = [...messages].sort((a, b) => {
     const aTime = new Date(a.sentAt).getTime();
@@ -66,6 +82,7 @@ const normalizeChatMessages = (messages: ChatMessage[]) => {
   return sorted;
 };
 
+// 对外暴露的信令上下文能力
 interface SignalingContextValue {
   status: CallStatus;
   session: CallSession | null;
@@ -81,10 +98,12 @@ interface SignalingContextValue {
   loadChatHistory: (peerEmail: string, limit?: number) => Promise<void>;
 }
 
+// 创建信令上下文
 const SignalingContext = createContext<SignalingContextValue | undefined>(
   undefined
 );
 
+// 默认 STUN 列表（后端不可用时的降级）
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -93,6 +112,7 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun4.l.google.com:19302" }
 ];
 
+// 校验 SDP 结构
 const isSessionDescriptionPayload = (
   value: unknown
 ): value is SessionDescriptionPayload => {
@@ -104,6 +124,7 @@ const isSessionDescriptionPayload = (
   );
 };
 
+// 校验 ICE 结构
 const isIceCandidatePayload = (
   value: unknown
 ): value is IceCandidatePayload => {
@@ -114,19 +135,23 @@ const isIceCandidatePayload = (
   );
 };
 
+// 核心：管理信令连接、WebRTC、铃声、聊天与状态
 export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   children
 }) => {
   const { token, user } = useAuthContext();
   const { t } = useLanguage();
+  // 通话与连接状态
   const [status, setStatus] = useState<CallStatus>("idle");
   const [session, setSession] = useState<CallSession | null>(null);
   const [connectionReady, setConnectionReady] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
+  // 聊天消息缓存（按对方邮箱归档）
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
 
+  // 运行中的连接/会话引用，避免闭包读到旧状态
   const signalingRef = useRef<SignalingClient | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionRef = useRef<CallSession | null>(null);
@@ -138,14 +163,17 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   const ringtoneRef = useRef<Audio.Sound | null>(null);
   const ringtoneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 同步会话引用，避免闭包读取旧值
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
 
+  // 同步状态引用，便于在回调里读取
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
+  // 登录后从后端拉取 ICE/TURN 配置，失败则回退默认 STUN
   useEffect(() => {
     let cancelled = false;
     const loadIceServers = async () => {
@@ -175,6 +203,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [token]);
 
+  // 申请通话所需权限（音频/蓝牙/部分机型摄像头）
   const ensureAudioPermission = useCallback(async () => {
     console.log("[ensureAudioPermission] Platform:", Platform.OS);
     
@@ -218,6 +247,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     return true;
   }, [t]);
 
+  // 清理拨出超时计时器
   const clearCallTimeout = useCallback(() => {
     if (callTimeoutRef.current) {
       clearTimeout(callTimeoutRef.current);
@@ -225,6 +255,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  // 停止并卸载铃声
   const stopRingtone = useCallback(async () => {
     if (ringtoneTimeoutRef.current) {
       clearTimeout(ringtoneTimeoutRef.current);
@@ -245,6 +276,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  // 播放铃声（循环，最多 60 秒）
   const startRingtone = useCallback(async () => {
     await stopRingtone();
     try {
@@ -270,6 +302,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [stopRingtone]);
 
+  // 释放 WebRTC 资源与媒体流
   const resetPeerResources = useCallback(() => {
     pendingLocalCandidates.current = [];
     pendingRemoteCandidates.current = [];
@@ -293,6 +326,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     setRemoteStream(null);
   }, [localStream, remoteStream]);
 
+  // 重置通话状态（结束/失败后的统一收尾）
   const resetCallState = useCallback(() => {
     pendingTarget.current = null;
     setSession(null);
@@ -303,6 +337,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     resetPeerResources();
   }, [clearCallTimeout, resetPeerResources, stopRingtone]);
 
+  // 统一发送信令消息，自动处理断线提示
   const sendMessage = useCallback((message: SignalMessage) => {
     const client = signalingRef.current;
     console.log("[sendMessage] Attempting to send message:", message.type, "to:", message.to);
@@ -331,6 +366,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [t]);
 
+  // 缓存远端 ICE（等远端描述设置后再补）
   const enqueueRemoteCandidate = useCallback((candidate: IceCandidatePayload) => {
     const alreadyQueued = pendingRemoteCandidates.current.some(
       (item) =>
@@ -343,6 +379,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  // 批量补发本地 ICE
   const flushPendingLocalCandidates = useCallback(
     (callId: string, peerEmail: string) => {
       if (!pendingLocalCandidates.current.length) {
@@ -362,6 +399,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [sendMessage]
   );
 
+  // 批量补加远端 ICE
   const drainRemoteCandidates = useCallback(async () => {
     const pc = peerRef.current;
     if (!pc || !pendingRemoteCandidates.current.length) {
@@ -378,6 +416,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  // 合并聊天记录并去重排序
   const upsertChatMessages = useCallback(
     (peerEmail: string, incoming: ChatMessage[]) => {
       if (!incoming.length) {
@@ -403,6 +442,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     []
   );
 
+  // 追加单条聊天记录
   const appendChatMessage = useCallback(
     (peerEmail: string, message: ChatMessage) => {
       upsertChatMessages(peerEmail, [message]);
@@ -410,6 +450,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [upsertChatMessages]
   );
 
+  // 从后端拉取历史聊天记录并合并
   const loadChatHistory = useCallback(
     async (peerEmail: string, limit = 50) => {
       if (!token) {
@@ -439,6 +480,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [t, token, upsertChatMessages]
   );
 
+  // 发送聊天消息（先本地回显，再走信令）
   const sendChatMessage = useCallback(
     (peerEmail: string, text: string) => {
       const content = text.trim();
@@ -471,6 +513,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [appendChatMessage, sendMessage, t, user?.email]
   );
 
+  // 拨出超时：60 秒无人接听则自动结束
   const scheduleCallTimeout = useCallback(
     (callId: string, peerEmail: string) => {
       if (!callId || !peerEmail) {
@@ -491,6 +534,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [clearCallTimeout, resetCallState, sendMessage, t]
   );
 
+  // 创建 PeerConnection 并绑定 ICE/轨道/状态监听
   const createPeerConnection = useCallback(() => {
     const pc = new RTCPeerConnection({
       iceServers,
@@ -541,6 +585,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     return pc;
   }, [iceServers, resetCallState, sendMessage]);
 
+  // 建立 WebSocket 信令连接，并处理各类信令消息
   useEffect(() => {
     if (!token) {
       console.log("[SignalingContext] No token available, disconnecting");
@@ -570,11 +615,14 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       resetCallState();
     };
 
+    // 核心信令分发：call/ice/chat
     const handleMessage = async (message: SignalMessage) => {
       console.log("[SignalingContext] Received message:", message.type, "from:", message.from);
       switch (message.type) {
         case "call.invite.ack":
           console.log("[SignalingContext] Received call.invite.ack, callId:", message.call_id, "pendingTarget:", pendingTarget.current);
+          // 只有在自己发起呼叫后，pendingTarget 才会有值
+          // 这里确认后端已分配 call_id，然后创建本地会话
           if (pendingTarget.current) {
             const newSession: CallSession = {
               callId: message.call_id ?? "",
@@ -584,25 +632,31 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             console.log("[SignalingContext] Creating new session:", newSession);
             sessionRef.current = newSession;
             setSession(newSession);
+            // 发起端状态进入“呼叫中”
             setStatus("connecting");
             if (newSession.callId) {
               console.log("[SignalingContext] Flushing pending local candidates");
+              // 把之前缓存的本地 ICE 候选补发给对端
               flushPendingLocalCandidates(
                 newSession.callId,
                 newSession.peerEmail
               );
+              // 启动 60 秒无人接听的超时计时器
               scheduleCallTimeout(newSession.callId, newSession.peerEmail);
             }
+            // ack 处理完后清空待呼叫目标
             pendingTarget.current = null;
           } else {
             console.warn("[SignalingContext] Received call.invite.ack but no pending target");
           }
           break;
         case "call.invite":
+          // 收到来电：必须有 from 且 payload 是合法 SDP
           if (!message.from || !isSessionDescriptionPayload(message.payload)) {
             Alert.alert(t("call_error_title"), t("call_error_invalid_invite"));
             break;
           }
+          // 保存来电会话信息，并切换到 incoming 状态
           setSession({
             callId: message.call_id ?? "",
             peerEmail: message.from,
@@ -610,24 +664,29 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             offer: message.payload as SessionDescriptionPayload
           });
           setStatus("incoming");
+          // 播放来电铃声
           void startRingtone();
           break;
         case "call.accept":
+          // 对方接听：停止超时计时器与铃声
           clearCallTimeout();
           void stopRingtone();
           if (isSessionDescriptionPayload(message.payload)) {
             const pc = peerRef.current;
             if (pc && message.payload.sdp) {
               try {
+                // 设置远端 answer，完成 SDP 协商
                 await pc.setRemoteDescription(
                   new RTCSessionDescription(message.payload as any)
                 );
+                // 把缓存的远端 ICE 候选补加到 PeerConnection
                 await drainRemoteCandidates();
               } catch (error) {
                 console.warn("Failed to apply remote answer", error);
               }
             }
           }
+          // 切换为通话中状态
           setStatus("in_call");
           setSession((current) =>
             current
@@ -638,6 +697,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
               : current
           );
           if (sessionRef.current && message.call_id) {
+            // 同步 call_id 并补发本地 ICE 候选
             const current = {
               ...sessionRef.current,
               callId: message.call_id
@@ -647,15 +707,18 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           }
           break;
         case "call.reject":
+          // 对方拒绝：停止超时与铃声，提示用户
           clearCallTimeout();
           void stopRingtone();
           Alert.alert(
             t("call_rejected_title"),
             t("call_rejected_body", { name: message.from ?? "" })
           );
+          // 清理本地会话与媒体
           resetCallState();
           break;
         case "call.end":
+          // 对方挂断或超时：清理状态并提示
           clearCallTimeout();
           void stopRingtone();
           if (
@@ -665,6 +728,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             String((message.payload as any).reason) === "timeout" &&
             statusRef.current !== "in_call"
           ) {
+            // 如果是超时结束且当前未进入通话中，提示未接来电
             Alert.alert(t("missed_call_title"), t("missed_call_body"));
           } else {
             Alert.alert(
@@ -675,6 +739,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           resetCallState();
           break;
         case "chat.message": {
+          // 收到聊天消息：追加到聊天列表
           if (!message.from || !message.payload || typeof message.payload !== "object") {
             break;
           }
@@ -695,6 +760,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           break;
         }
         case "ice.candidate":
+          // ICE 候选交换：用于打通 P2P 或 TURN 连接
           if (isIceCandidatePayload(message.payload)) {
             const pc = peerRef.current;
             if (pc) {
@@ -703,6 +769,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
                 typeof pc.remoteDescription?.type === "string";
               if (hasRemoteDescription) {
                 try {
+                  // 已设置远端 SDP，直接添加候选
                   await pc.addIceCandidate(
                     new RTCIceCandidate(message.payload)
                   );
@@ -710,14 +777,17 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
                   console.warn("Failed to add ICE candidate", error);
                 }
               } else {
+                // 未设置远端 SDP，先缓存候选
                 enqueueRemoteCandidate(message.payload);
               }
             } else {
+              // PeerConnection 尚未创建，也先缓存
               enqueueRemoteCandidate(message.payload);
             }
           }
           break;
         case "call.error":
+          // 发生通话错误时提示并清理
           Alert.alert(t("call_error_title"), t("call_error_generic"));
           resetCallState();
           break;
@@ -752,6 +822,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     token
   ]);
 
+  // 发起通话：获取本地流、创建 offer、发送 call.invite
   const startCall = useCallback(
     async (email: string) => {
       console.log("[startCall] Starting call to:", email, "Current status:", status);
@@ -770,7 +841,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
 
       try {
         console.log("[startCall] Requesting audio permissions...");
-        const hasPermission = await ensureAudioPermission();
+        const hasPermission = await ensureAudioPermission();//申请麦克风权限
         if (!hasPermission) {
           console.warn("[startCall] Audio permission denied");
           Alert.alert(t("mic_permission_title"), t("mic_permission_body"));
@@ -779,7 +850,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         console.log("[startCall] Audio permission granted");
 
         console.log("[startCall] Resetting peer resources...");
-        resetPeerResources();
+        resetPeerResources();//清理旧资源防止上一次对话残留
         
         console.log("[startCall] Requesting media stream...");
         console.log("[startCall] webrtcMediaDevices:", webrtcMediaDevices ? "available" : "null");
@@ -792,7 +863,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         const stream = await webrtcMediaDevices.getUserMedia({
           audio: true,
           video: false
-        });
+        });//获取本地音频流
         console.log("[startCall] Media stream obtained:", stream.getTracks().length, "tracks");
         stream.getTracks().forEach((track) => {
           console.log("[startCall] Track obtained - Kind:", track.kind, "Enabled:", track.enabled);
@@ -800,25 +871,25 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         setLocalStream(stream);
 
         console.log("[startCall] Creating peer connection...");
-        const pc = createPeerConnection();
+        const pc = createPeerConnection();//创建 WebRTC 连接 pc，并把本地音频 track 加进去
         stream.getTracks().forEach((track) => {
           console.log("[startCall] Adding track:", track.kind);
-          pc.addTrack(track, stream);
+          pc.addTrack(track, stream);//我这边要把这条音频发送给对方
         });
 
         console.log("[startCall] Creating offer...");
-        const offer = await pc.createOffer({
+        const offer = await pc.createOffer({//创建 offer（通话邀请的“提案”）
           offerToReceiveAudio: true,
           offerToReceiveVideo: false
         });
         console.log("[startCall] Offer created, SDP length:", offer.sdp?.length);
         
         console.log("[startCall] Setting local description...");
-        await pc.setLocalDescription(offer);
+        await pc.setLocalDescription(offer);//告诉 pc：“这是我准备发给对方的提案”，pc 会基于它开始 ICE candidate 收集
         console.log("[startCall] Local description set");
 
-        pendingTarget.current = email;
-        setStatus("connecting");
+        pendingTarget.current = email;//更新状态 + 记录目标 + 发送 call.invite 给对方
+        setStatus("connecting");//UI界面进入通话逻辑
         console.log("[startCall] Status changed to 'connecting'");
         
         console.log("[startCall] Sending call.invite message...");
@@ -829,7 +900,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
             sdp: offer.sdp,
             type: offer.type
           }
-        });
+        });//走websocket发送的信令消息
         console.log("[startCall] call.invite message sent");
       } catch (error) {
         console.error("[startCall] Error occurred:", error);
@@ -855,13 +926,17 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     ]
   );
 
+  // 接听通话：设置远端 SDP、回传 answer
   const acceptCall = useCallback(async () => {
+    // 只有在来电状态且有 offer 时才允许接听
     if (!session || session.direction !== "incoming" || !session.offer) {
       return;
     }
 
+    // 停止来电铃声
     void stopRingtone();
 
+    // 再次确认麦克风/蓝牙权限（部分机型需要）
     const hasPermission = await ensureAudioPermission();
     if (!hasPermission) {
       Alert.alert(t("mic_permission_title"), t("mic_permission_body"));
@@ -869,6 +944,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     try {
+      // 获取本地音频流
       console.log("[acceptCall] Requesting media stream...");
       console.log("[acceptCall] webrtcMediaDevices:", webrtcMediaDevices ? "available" : "null");
       
@@ -887,9 +963,11 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       setLocalStream(stream);
 
+      // 创建 PeerConnection 并绑定本地轨道
       const pc = createPeerConnection();
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
+      // 设置远端 offer（来自对方的 call.invite）
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(session.offer as any));
       } catch (error) {
@@ -899,10 +977,13 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
+      // 生成 answer 并设置为本地描述
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      // 补加此前缓存的远端 ICE 候选
       await drainRemoteCandidates();
 
+      // 通过信令发送 call.accept（携带 answer）
       sendMessage({
         type: "call.accept",
         call_id: session.callId,
@@ -913,6 +994,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       });
 
+      // 切换为通话中状态
       setStatus("in_call");
     } catch (error) {
       console.error("acceptCall error", error);
@@ -930,33 +1012,43 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     t
   ]);
 
+  // 拒绝通话
   const rejectCall = useCallback(() => {
+    // 没有会话时不处理
     if (!session) {
       return;
     }
+    // 停止铃声并发送拒绝信令
     void stopRingtone();
     sendMessage({
       type: "call.reject",
       call_id: session.callId,
       to: session.peerEmail
     });
+    // 清理通话状态与媒体资源
     resetCallState();
   }, [resetCallState, sendMessage, session, stopRingtone]);
 
+  // 挂断通话
   const endCall = useCallback(() => {
+    // 没有会话时不处理
     if (!session) {
       return;
     }
+    // 取消超时计时器并停止铃声
     clearCallTimeout();
     void stopRingtone();
+    // 通知对端结束通话
     sendMessage({
       type: "call.end",
       call_id: session.callId,
       to: session.peerEmail
     });
+    // 清理通话状态与媒体资源
     resetCallState();
   }, [clearCallTimeout, resetCallState, sendMessage, session, stopRingtone]);
 
+  // 向外暴露上下文能力
   const value = useMemo<SignalingContextValue>(
     () => ({
       status,
@@ -996,6 +1088,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
 };
 
 export const useSignaling = () => {
+  // 供组件消费信令上下文的 Hook
   const ctx = useContext(SignalingContext);
   if (!ctx) {
     throw new Error("useSignaling must be used within SignalingProvider");

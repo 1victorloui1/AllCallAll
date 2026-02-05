@@ -1,3 +1,4 @@
+// 认证处理器：处理注册/登录并签发 JWT
 package handlers
 
 import (
@@ -29,28 +30,33 @@ func NewAuthHandler(log zerolog.Logger, users *user.Service, jwt *auth.Manager) 
 	}
 }
 
+// 注册请求体
 type registerRequest struct {
 	Email       string `json:"email" binding:"required,email"`
 	Password    string `json:"password" binding:"required,min=8"`
 	DisplayName string `json:"display_name" binding:"required"`
 }
 
+// 登录/注册统一响应体
 type authResponse struct {
 	User        userDTO `json:"user"`
 	AccessToken string  `json:"access_token"`
 }
 
+// 登录请求体
 type loginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
+// 返回给前端的用户结构
 type userDTO struct {
 	ID          uint64 `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 }
 
+// 内部模型 -> 前端 DTO
 func toUserDTO(u *models.User) userDTO {
 	return userDTO{
 		ID:          u.ID,
@@ -66,13 +72,16 @@ func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/login", h.handleLogin)
 }
 
+// handleRegister 处理注册请求
 func (h *AuthHandler) handleRegister(c *gin.Context) {
+	// 解析并校验请求体
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// 调用用户服务完成注册
 	userModel, err := h.users.Register(c.Request.Context(), user.RegisterInput{
 		Email:       req.Email,
 		Password:    req.Password,
@@ -89,6 +98,7 @@ func (h *AuthHandler) handleRegister(c *gin.Context) {
 		return
 	}
 
+	// 注册成功后签发 JWT
 	token, err := h.jwtManager.GenerateAccessToken(userModel.ID, userModel.Email)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("generate token failed")
@@ -96,19 +106,23 @@ func (h *AuthHandler) handleRegister(c *gin.Context) {
 		return
 	}
 
+	// 返回用户信息与 token
 	JSONSuccess(c, http.StatusCreated, authResponse{
 		User:        toUserDTO(userModel),
 		AccessToken: token,
 	})
 }
 
+// handleLogin 处理登录请求
 func (h *AuthHandler) handleLogin(c *gin.Context) {
+	// 解析并校验请求体
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// 校验账号密码
 	userModel, err := h.users.Authenticate(c.Request.Context(), user.LoginInput{
 		Email:    req.Email,
 		Password: req.Password,
@@ -123,6 +137,7 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 		return
 	}
 
+	// 登录成功后签发 JWT
 	token, err := h.jwtManager.GenerateAccessToken(userModel.ID, userModel.Email)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("generate token failed")
@@ -130,6 +145,7 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 		return
 	}
 
+	// 返回用户信息与 token
 	JSONSuccess(c, http.StatusOK, authResponse{
 		User:        toUserDTO(userModel),
 		AccessToken: token,

@@ -49,30 +49,36 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 // Register 注册用户
 // Register creates a new user with hashed password.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*models.User, error) {
+	// 统一邮箱与显示名格式（去空格、邮箱转小写）
 	in.Email = strings.TrimSpace(strings.ToLower(in.Email))
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 
+	// 检查邮箱是否已被注册
 	if _, err := s.repo.FindByEmail(ctx, in.Email); err == nil {
 		return nil, ErrEmailAlreadyUsed
 	} else if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 
+	// 使用 bcrypt 对密码进行哈希处理
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
+	// 构建用户模型（保存哈希后的密码）
 	user := &models.User{
 		Email:        in.Email,
 		PasswordHash: string(hash),
 		DisplayName:  in.DisplayName,
 	}
 
+	// 写入数据库
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
+	// 返回新创建的用户
 	return user, nil
 }
 

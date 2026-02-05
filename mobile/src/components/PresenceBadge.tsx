@@ -1,12 +1,15 @@
+// 在线状态徽标：显示在线/离线与最后在线时间
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useLanguage } from "../context/LanguageContext";
 
+// 组件参数类型
 interface Props {
   online: boolean;
   lastSeen?: string | null;
 }
 
+// 在线状态显示组件
 const PresenceBadge: React.FC<Props> = ({ online, lastSeen }) => {
   const { t } = useLanguage();
   return (
@@ -25,6 +28,7 @@ const PresenceBadge: React.FC<Props> = ({ online, lastSeen }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",

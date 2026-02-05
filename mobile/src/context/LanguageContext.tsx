@@ -1,7 +1,10 @@
+// 多语言上下文：提供中英文文案与切换能力
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 
+// 支持的语言类型
 type Language = "zh" | "en";
 
+// 全量文案表（中文/英文）
 const translations = {
   zh: {
     language_zh: "中文",
@@ -321,27 +324,33 @@ const translations = {
   }
 } as const;
 
+// 翻译 Key 与参数类型
 type TranslationKey = keyof typeof translations.en;
 type TranslationParams = Record<string, string | number>;
 
+// 对外暴露的语言上下文能力
 interface LanguageContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: TranslationKey, params?: TranslationParams) => string;
 }
 
+// 创建语言上下文
 const LanguageContext = createContext<LanguageContextValue | undefined>(
   undefined
 );
 
+// 语言 Provider：提供语言状态与翻译函数
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
   children
 }) => {
+  // 默认使用中文
   const [language, setLanguage] = useState<Language>("zh");
 
+  // 翻译函数：支持模板变量替换
   const t = useCallback(
     (key: TranslationKey, params?: TranslationParams) => {
-      let template = translations[language][key] ?? key;
+      let template: string = translations[language][key] ?? key;
       if (params) {
         Object.entries(params).forEach(([paramKey, value]) => {
           template = template.replace(
@@ -355,6 +364,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     [language]
   );
 
+  // 缓存上下文值，避免无谓渲染
   const value = useMemo(
     () => ({
       language,
@@ -371,6 +381,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
+// 简化使用的 Hook
 export const useLanguage = () => {
   const ctx = useContext(LanguageContext);
   if (!ctx) {

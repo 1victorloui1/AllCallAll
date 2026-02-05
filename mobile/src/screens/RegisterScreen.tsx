@@ -1,3 +1,4 @@
+// 注册页面：输入用户信息并引导邮箱验证
 import React, { useState } from "react";
 import {
   View,
@@ -16,19 +17,23 @@ import { useAuthContext } from "../context/AuthContext";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { useLanguage } from "../context/LanguageContext";
 
+// 路由参数类型
 type Props = NativeStackScreenProps<RootStackParamList, "Register">;
 
+// 注册页组件
 const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
   const { register } = useAuthContext();
   const { t } = useLanguage();
   // 如果来自邮箱验证页面，会有预填的 email
   const { email: prefilledEmail } = route.params || {};
   
+  // 表单与加载状态
   const [email, setEmail] = useState(prefilledEmail || "");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 提交注册（先验证邮箱再注册）
   const handleRegister = async () => {
     try {
       // 验证输入
@@ -85,10 +90,12 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.container}
     >
+      {/* 标题区域 */}
       <View style={styles.header}>
         <Text style={styles.title}>{t("register_title")}</Text>
         <Text style={styles.subtitle}>{t("register_subtitle")}</Text>
       </View>
+      {/* 注册表单 */}
       <View style={styles.form}>
         <TextField
           label={t("register_display_name_label")}
@@ -129,6 +136,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
+// 样式定义
 const styles = StyleSheet.create({
   container: {
     flex: 1,
