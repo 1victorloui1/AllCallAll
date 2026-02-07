@@ -14,6 +14,7 @@
 - 🔔 **来电铃声与超时** - 60 秒无人接听自动挂断并提示
 - 💬 **文本聊天** - 支持表情选择与消息时间戳
 - 📝 **通话记录** - 记录拨出/接听/未接通话
+- 🎙️ **通话录音与 AI 摘要** - 单端录音上传，生成转写、摘要与中英互译，仅录音者可见
 - 🗂️ **聊天记录持久化** - 服务端 MySQL 保存聊天历史
 - 👥 **联系人管理** - 添加、搜索和管理通讯录
 - 🟢 **在线状态** - 实时显示用户在线状态和最后在线时间
@@ -33,6 +34,9 @@
 - **WebRTC**: Pion v4.0.0
 - **认证**: JWT (golang-jwt)
 - **邮件**: SMTP (QQ邮箱 smtp.qq.com:587)
+- **语音识别**: 阿里云 ISI 录音文件识别（极速版）
+- **LLM**: OpenRouter（默认 DeepSeek）
+- **音频处理**: FFmpeg（转 WAV）
 
 #### 移动端
 - **框架**: React Native 0.74+
@@ -40,7 +44,8 @@
 - **语言**: TypeScript
 - **UI**: React Navigation
 - **WebRTC**: react-native-webrtc 124.0.0
-- **音频**: expo-av（铃声播放）
+- **音频**: expo-av（铃声播放 + 录音）
+- **上传**: expo-file-system（录音文件上传）
 - **HTTP**: Axios
 - **状态管理**: React Context API
 
@@ -144,6 +149,24 @@ export WEBRTC_ICE_SERVERS_JSON='[
 ```
 3. 重启后端。APK 不需要重新打包，登陆后客户端会自动从 `/api/v1/webrtc/config` 读取最新 ICE/TURN 配置。
 
+### AI 录音摘要配置（ASR + LLM）
+
+1. 在 `infra/.env` 或 `backend/.env` 填入以下变量：  
+   ```bash
+   # Aliyun ASR
+   ALIYUN_AK_ID=your_access_key_id
+   ALIYUN_AK_SECRET=your_access_key_secret
+   ALIYUN_ASR_APP_KEY=your_appkey
+   ALIYUN_ASR_REGION=cn-shanghai
+   ALIYUN_ASR_ENDPOINT=https://nls-gateway-cn-shanghai.aliyuncs.com
+
+   # OpenRouter LLM
+   OPENROUTER_API_KEY=your_openrouter_key
+   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+   OPENROUTER_MODEL=deepseek/deepseek-chat
+   ```
+2. 该功能会自动识别转写文本语言（中/英），并翻译为另一种语言。
+
 ### 🌐 生产环境（当前部署：47.109.183.99）
 
 - API: `http://47.109.183.99/api/v1`  
@@ -187,6 +210,7 @@ docker exec -it infra-mysql-1 mysql -uroot -p"$MYSQL_ROOT_PASSWORD" allcallall_d
   -e "SET FOREIGN_KEY_CHECKS=0;
       TRUNCATE TABLE chat_messages;
       TRUNCATE TABLE call_logs;
+      TRUNCATE TABLE call_recordings;
       TRUNCATE TABLE contacts;
       TRUNCATE TABLE email_verification_codes;
       TRUNCATE TABLE email_send_logs;
@@ -264,6 +288,7 @@ allcall/
 │   │   ├── user/               # 用户管理
 │   │   ├── contact/            # 联系人管理
 │   │   ├── calllog/            # 通话记录
+│   │   ├── recording/          # 录音与摘要处理
 │   │   ├── chatlog/            # 聊天记录
 │   │   ├── signaling/          # WebRTC 信令
 │   │   ├── media/              # Pion WebRTC 媒体引擎
@@ -398,6 +423,9 @@ GET    /api/v1/users/presence    - 获取用户在线状态
 GET    /api/v1/users/search      - 搜索用户
 GET    /api/v1/users/call-logs   - 获取通话记录
 GET    /api/v1/users/chat-logs   - 获取聊天记录（?peer_email=xxx）
+POST   /api/v1/users/call-recordings/start          - 开始录音会话（仅自己）
+POST   /api/v1/users/call-recordings/{call_id}/upload - 上传录音文件
+GET    /api/v1/users/call-recordings/{call_id}      - 获取录音详情
 ```
 
 ### 信令
@@ -565,6 +593,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - 🔔 **Ringtone & Timeout** - Auto hangup after 60 seconds of no answer
 - 💬 **Text Chat** - Emoji picker and message timestamps
 - 📝 **Call Logs** - Outgoing/answered/missed call history
+- 🎙️ **Call Recording + AI Summary** - Single-side recording, transcription + summary + CN/EN translation, visible only to the recorder
 - 🗂️ **Chat History Persistence** - Stored in MySQL on the server
 - 👥 **Contact Management** - Add, search, and manage contacts
 - 🟢 **Online Status** - Real-time user presence and last seen information
@@ -585,6 +614,9 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - **WebRTC**: Pion v4.0.0
 - **Authentication**: JWT (golang-jwt)
 - **Email**: SMTP (QQ Mail smtp.qq.com:587)
+- **ASR**: Aliyun ISI FlashRecognizer (recording file recognition)
+- **LLM**: OpenRouter (default DeepSeek)
+- **Audio Processing**: FFmpeg (convert to WAV)
 
 #### Mobile
 - **Framework**: React Native 0.74+
@@ -592,7 +624,8 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - **Language**: TypeScript
 - **UI**: React Navigation
 - **WebRTC**: react-native-webrtc 124.0.0
-- **Audio**: expo-av (ringtone playback)
+- **Audio**: expo-av (ringtone playback + recording)
+- **Upload**: expo-file-system (recording upload)
 - **HTTP**: Axios
 - **State Management**: React Context API
 
@@ -673,6 +706,7 @@ docker exec -it infra-mysql-1 mysql -uroot -p"$MYSQL_ROOT_PASSWORD" allcallall_d
   -e "SET FOREIGN_KEY_CHECKS=0;
       TRUNCATE TABLE chat_messages;
       TRUNCATE TABLE call_logs;
+      TRUNCATE TABLE call_recordings;
       TRUNCATE TABLE contacts;
       TRUNCATE TABLE email_verification_codes;
       TRUNCATE TABLE email_send_logs;
@@ -719,6 +753,24 @@ go run cmd/server/main.go
 # 6. Verify backend is running
 curl http://localhost:8080/health
 ```
+
+#### AI Recording Summary Setup (ASR + LLM)
+
+1. Fill the following variables in `infra/.env` or `backend/.env`:
+   ```bash
+   # Aliyun ASR
+   ALIYUN_AK_ID=your_access_key_id
+   ALIYUN_AK_SECRET=your_access_key_secret
+   ALIYUN_ASR_APP_KEY=your_appkey
+   ALIYUN_ASR_REGION=cn-shanghai
+   ALIYUN_ASR_ENDPOINT=https://nls-gateway-cn-shanghai.aliyuncs.com
+
+   # OpenRouter LLM
+   OPENROUTER_API_KEY=your_openrouter_key
+   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+   OPENROUTER_MODEL=deepseek/deepseek-chat
+   ```
+2. The server auto-detects transcript language (CN/EN) and translates to the other language.
 
 #### Start Mobile Application
 
@@ -790,6 +842,7 @@ allcall/
 │   │   ├── user/               # User management
 │   │   ├── contact/            # Contact management
 │   │   ├── calllog/            # Call logs
+│   │   ├── recording/          # Recording + AI summary
 │   │   ├── chatlog/            # Chat logs
 │   │   ├── signaling/          # WebRTC signaling
 │   │   ├── media/              # Pion WebRTC media engine
@@ -924,6 +977,9 @@ GET    /api/v1/users/presence    - Get user online status
 GET    /api/v1/users/search      - Search users
 GET    /api/v1/users/call-logs   - Get call logs
 GET    /api/v1/users/chat-logs   - Get chat logs (?peer_email=xxx)
+POST   /api/v1/users/call-recordings/start          - Start recording session (self only)
+POST   /api/v1/users/call-recordings/{call_id}/upload - Upload recording file
+GET    /api/v1/users/call-recordings/{call_id}      - Get recording details
 ```
 
 #### Signaling
