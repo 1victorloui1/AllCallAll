@@ -629,16 +629,11 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       recordingOwnerRef.current = true;
       recordingCallIdRef.current = currentSession.callId;
-      sendMessage({
-        type: "call.record.start",
-        call_id: currentSession.callId,
-        to: currentSession.peerEmail
-      });
     } catch (error) {
       console.error("startRecording failed", error);
       Alert.alert(t("error_title"), t("recording_start_failed"));
     }
-  }, [isRecording, language, sendMessage, startLocalRecording, t, token, user]);
+  }, [isRecording, language, startLocalRecording, t, token, user]);
 
   // 拨出超时：60 秒无人接听则自动结束
   const scheduleCallTimeout = useCallback(
@@ -794,23 +789,6 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           // 播放来电铃声
           void startRingtone();
           break;
-        case "call.record.start": {
-          // 对方开始录音：提示并启动本地录音
-          if (statusRef.current !== "in_call") {
-            break;
-          }
-          if (recordingRef.current) {
-            break;
-          }
-          const activeCallId = message.call_id ?? sessionRef.current?.callId;
-          if (!activeCallId) {
-            break;
-          }
-          recordingOwnerRef.current = false;
-          recordingCallIdRef.current = activeCallId;
-          await startLocalRecording();
-          break;
-        }
         case "call.accept":
           // 对方接听：停止超时计时器与铃声
           clearCallTimeout();

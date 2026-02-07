@@ -125,25 +125,16 @@ func (s *Service) StartRecordingSession(ctx context.Context, ownerID uint64, own
 
 // SaveUpload saves an uploaded audio file and returns the path.
 func (s *Service) SaveUpload(ctx context.Context, callID string, uploaderID uint64, uploaderEmail string, file *multipart.FileHeader, ext string, saveFn func(*multipart.FileHeader, string) error) (string, error) {
-	_ = uploaderID
+	_ = uploaderEmail
 	if err := os.MkdirAll(s.storageDir, 0o755); err != nil {
 		return "", err
 	}
-	rec, err := s.repo.GetByCallID(ctx, callID)
+	rec, err := s.repo.GetByCallIDAndOwner(ctx, callID, uploaderID)
 	if err != nil {
 		return "", fmt.Errorf("recording not found")
 	}
-	role := ""
-	switch uploaderEmail {
-	case rec.OwnerEmail:
-		role = "owner"
-	case rec.PeerEmail:
-		role = "peer"
-	default:
-		return "", fmt.Errorf("uploader is not a participant")
-	}
 
-	filename := fmt.Sprintf("%s-%s%s", callID, role, ext)
+	filename := fmt.Sprintf("%s-owner-%d%s", callID, rec.OwnerUserID, ext)
 	dst := filepath.Join(s.storageDir, filename)
 	if err := saveFn(file, dst); err != nil {
 		return "", err
@@ -151,44 +142,24 @@ func (s *Service) SaveUpload(ctx context.Context, callID string, uploaderID uint
 	return dst, nil
 }
 
-// HandleUpload attaches the audio file and triggers processing when ready.
+// HandleUpload attaches the audio file and triggers processing immediately (single-side recording).
 func (s *Service) HandleUpload(ctx context.Context, callID string, uploaderID uint64, uploaderEmail string, path string) (string, error) {
-	_ = uploaderID
-	rec, err := s.repo.GetByCallID(ctx, callID)
+	_ = uploaderEmail
+	rec, err := s.repo.GetByCallIDAndOwner(ctx, callID, uploaderID)
 	if err != nil {
 		return "", fmt.Errorf("recording not found")
 	}
-	if uploaderEmail != rec.OwnerEmail && uploaderEmail != rec.PeerEmail {
-		return "", fmt.Errorf("uploader is not a participant")
-	}
 
-	updates := map[string]interface{}{}
-	if uploaderEmail == rec.OwnerEmail {
-		updates["owner_audio_path"] = path
-	} else {
-		updates["peer_audio_path"] = path
+	updates := map[string]interface{}{
+		"owner_audio_path": path,
+		"status":           StatusProcessing,
 	}
-	updates["status"] = StatusUploadedSelf
-
 	if err := s.repo.UpdateByID(ctx, rec.ID, updates); err != nil {
 		return "", err
 	}
 
-	latest, err := s.repo.GetByID(ctx, rec.ID)
-	if err != nil {
-		return "", err
-	}
-	if latest.OwnerAudioPath != "" && latest.PeerAudioPath != "" {
-		ok, err := s.repo.MarkProcessingIfReady(ctx, latest.ID)
-		if err != nil {
-			return "", err
-		}
-		if ok {
-			go s.processRecording(latest.ID)
-			return StatusProcessing, nil
-		}
-	}
-	return latest.Status, nil
+	go s.processRecording(rec.ID)
+	return StatusProcessing, nil
 }
 
 // GetRecordingForOwner returns details for the recording owner.
@@ -232,7 +203,7 @@ func (s *Service) processRecording(recordID uint64) {
 		return
 	}
 
-	if rec.OwnerAudioPath == "" || rec.PeerAudioPath == "" {
+	if rec.OwnerAudioPath == "" {
 		s.logger.Warn().Msg("recording missing audio path")
 		_ = s.repo.UpdateByID(ctx, recordID, map[string]interface{}{
 			"status":        StatusFailed,
@@ -248,30 +219,19 @@ func (s *Service) processRecording(recordID uint64) {
 	}
 	defer ownerCleanup()
 
-	peerWav, peerCleanup, err := s.ensureWav(rec.PeerAudioPath)
-	if err != nil {
-		s.failRecording(ctx, recordID, err)
-		return
-	}
-	defer peerCleanup()
-
 	ownerSegs, err := s.asr.Recognize(ctx, ownerWav, defaultFormat, defaultSampleRate)
 	if err != nil {
 		s.failRecording(ctx, recordID, err)
 		return
 	}
-	peerSegs, err := s.asr.Recognize(ctx, peerWav, defaultFormat, defaultSampleRate)
-	if err != nil {
-		s.failRecording(ctx, recordID, err)
-		return
-	}
-
-	merged := mergeSegments(ownerSegs, peerSegs)
+	merged := segmentsFromASR(ownerSegs)
 	merged = deduplicateSegments(merged, dedupWindowMs)
 	transcriptBytes, _ := json.Marshal(merged)
 
 	plainTranscript := buildTranscriptText(merged)
-	summary, translatedTranscript, translatedSummary, err := s.llm.SummarizeAndTranslate(ctx, plainTranscript, rec.TargetLang)
+	sourceLang := detectTranscriptLang(plainTranscript)
+	targetLang := targetLangFromSource(sourceLang, rec.TargetLang)
+	summary, translatedTranscript, translatedSummary, err := s.llm.SummarizeAndTranslate(ctx, plainTranscript, targetLang)
 	if err != nil {
 		s.failRecording(ctx, recordID, err)
 		return
@@ -279,6 +239,7 @@ func (s *Service) processRecording(recordID uint64) {
 
 	if err := s.repo.UpdateByID(ctx, recordID, map[string]interface{}{
 		"status":                StatusReady,
+		"target_lang":           targetLang,
 		"transcript_json":       transcriptBytes,
 		"summary_text":          summary,
 		"translated_transcript": translatedTranscript,
@@ -289,7 +250,6 @@ func (s *Service) processRecording(recordID uint64) {
 	}
 
 	_ = os.Remove(rec.OwnerAudioPath)
-	_ = os.Remove(rec.PeerAudioPath)
 }
 
 func (s *Service) failRecording(ctx context.Context, recordID uint64, err error) {
@@ -340,13 +300,30 @@ func mergeSegments(owner []asrSentence, peer []asrSentence) []TranscriptSegment 
 	return all
 }
 
+func segmentsFromASR(items []asrSentence) []TranscriptSegment {
+	segs := make([]TranscriptSegment, 0, len(items))
+	for _, s := range items {
+		segs = append(segs, TranscriptSegment{
+			Speaker: "",
+			StartMs: s.BeginTime,
+			EndMs:   s.EndTime,
+			Text:    strings.TrimSpace(s.Text),
+		})
+	}
+	return segs
+}
+
 func buildTranscriptText(items []TranscriptSegment) string {
 	var b strings.Builder
 	for _, seg := range items {
 		if seg.Text == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "%s [%d-%d]: %s\n", seg.Speaker, seg.StartMs, seg.EndMs, seg.Text)
+		if seg.Speaker != "" {
+			fmt.Fprintf(&b, "%s [%d-%d]: %s\n", seg.Speaker, seg.StartMs, seg.EndMs, seg.Text)
+			continue
+		}
+		fmt.Fprintf(&b, "[%d-%d]: %s\n", seg.StartMs, seg.EndMs, seg.Text)
 	}
 	return b.String()
 }
@@ -389,6 +366,44 @@ func normalizeForDedup(text string) string {
 		builder.WriteRune(r)
 	}
 	return builder.String()
+}
+
+func detectTranscriptLang(text string) string {
+	if text == "" {
+		return ""
+	}
+	var cjkCount int
+	var latinCount int
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) {
+			cjkCount++
+			continue
+		}
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			latinCount++
+		}
+	}
+	if cjkCount == 0 && latinCount == 0 {
+		return ""
+	}
+	if cjkCount >= latinCount {
+		return "zh"
+	}
+	return "en"
+}
+
+func targetLangFromSource(sourceLang string, fallback string) string {
+	switch sourceLang {
+	case "zh":
+		return "en"
+	case "en":
+		return "zh"
+	default:
+		if fallback == "zh" || fallback == "en" {
+			return fallback
+		}
+		return "en"
+	}
 }
 
 // --- Aliyun ASR client ---
@@ -598,8 +613,8 @@ func (c *openRouterClient) SummarizeAndTranslate(ctx context.Context, transcript
 		targetLabel = "中文"
 	}
 
-	systemPrompt := "You are a helpful assistant. Given a dialogue transcript with speakers A and B, return ONLY valid JSON with keys: summary, translated_transcript, translated_summary. Values MUST be plain strings (not arrays or objects). summary should be in the original language. translated_* must be in target language."
-	userPrompt := fmt.Sprintf("Target language: %s\nTranscript:\n%s", targetLabel, transcript)
+	systemPrompt := "You are a helpful assistant. Given a two-person phone call transcript captured from a single device (speaker identities are unknown), return ONLY valid JSON with keys: summary, translated_transcript, translated_summary. Do NOT assign speakers or add labels like A/B. Values MUST be plain strings (not arrays or objects). summary should be in the original language. translated_* must be in target language."
+	userPrompt := fmt.Sprintf("Translate target language: %s (opposite of source language).\nTranscript (single stream, no speaker identities):\n%s", targetLabel, transcript)
 
 	payload := map[string]interface{}{
 		"model": c.model,

@@ -24,18 +24,6 @@ func (r *Repository) Create(ctx context.Context, rec *models.CallRecording) erro
 	return r.db.WithContext(ctx).Create(rec).Error
 }
 
-// GetByCallID returns a recording by call ID.
-func (r *Repository) GetByCallID(ctx context.Context, callID string) (*models.CallRecording, error) {
-	var rec models.CallRecording
-	if err := r.db.WithContext(ctx).
-		Where("call_id = ?", callID).
-		Take(&rec).
-		Error; err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
 // GetByCallIDAndOwner returns a recording for an owner.
 func (r *Repository) GetByCallIDAndOwner(ctx context.Context, callID string, ownerID uint64) (*models.CallRecording, error) {
 	var rec models.CallRecording

@@ -97,15 +97,19 @@ const CallRecordingDetailScreen: React.FC<Props> = ({ route }) => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t("recording_detail_transcript")}</Text>
         {transcript.length ? (
-          transcript.map((seg, index) => (
-            <View key={`${seg.speaker}-${index}`} style={styles.segment}>
-              <Text style={styles.segmentMeta}>
-                {t("recording_detail_speaker", { speaker: seg.speaker })} ·{" "}
-                {Math.max(seg.start_ms, 0)}-{Math.max(seg.end_ms, 0)}ms
-              </Text>
-              <Text style={styles.bodyText}>{seg.text}</Text>
-            </View>
-          ))
+          transcript.map((seg, index) => {
+            const label = seg.speaker
+              ? t("recording_detail_speaker", { speaker: seg.speaker })
+              : t("recording_detail_segment");
+            return (
+              <View key={`${seg.speaker || "segment"}-${index}`} style={styles.segment}>
+                <Text style={styles.segmentMeta}>
+                  {label} · {Math.max(seg.start_ms, 0)}-{Math.max(seg.end_ms, 0)}ms
+                </Text>
+                <Text style={styles.bodyText}>{seg.text}</Text>
+              </View>
+            );
+          })
         ) : (
           <Text style={styles.bodyText}>{t("recording_detail_pending")}</Text>
         )}
