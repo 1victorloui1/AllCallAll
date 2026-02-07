@@ -11,6 +11,7 @@ backend/.gocache/
 backend/.gomodcache/
 backend/.gopath/
 backend/server
+backend/data/
 
 # Mobile
 mobile/node_modules/

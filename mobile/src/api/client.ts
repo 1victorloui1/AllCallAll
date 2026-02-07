@@ -16,7 +16,20 @@ export const createApiClient = (token?: string): AxiosInstance => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    config.headers["Content-Type"] = "application/json";
+
+    const data = config.data as any;
+    const isFormData =
+      !!data &&
+      (data instanceof FormData ||
+        (typeof data === "object" && Array.isArray(data._parts)) ||
+        typeof data?.getParts === "function");
+
+    if (!isFormData) {
+      config.headers["Content-Type"] = "application/json";
+    } else {
+      delete (config.headers as Record<string, string>)["Content-Type"];
+    }
+
     config.headers["Accept"] = "application/json";
     return config;
   });

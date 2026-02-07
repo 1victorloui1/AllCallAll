@@ -73,3 +73,17 @@ func (r *Repository) UpdateByCallIDAndStatus(ctx context.Context, callID, status
 		Updates(updates).
 		Error
 }
+
+// GetByCallIDAndUserID returns a single call log for a user and call ID.
+// GetByCallIDAndUserID 根据 call_id + user_id 获取通话记录。
+func (r *Repository) GetByCallIDAndUserID(ctx context.Context, callID string, userID uint64) (*models.CallLog, error) {
+	var log models.CallLog
+	err := r.db.WithContext(ctx).
+		Where("call_id = ? AND user_id = ?", callID, userID).
+		Take(&log).
+		Error
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}

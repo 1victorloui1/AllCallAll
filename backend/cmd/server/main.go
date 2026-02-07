@@ -23,6 +23,7 @@ import (
 	"github.com/allcallall/backend/internal/mail"
 	"github.com/allcallall/backend/internal/models"
 	"github.com/allcallall/backend/internal/presence"
+	"github.com/allcallall/backend/internal/recording"
 	"github.com/allcallall/backend/internal/server"
 	"github.com/allcallall/backend/internal/signaling"
 	"github.com/allcallall/backend/internal/user"
@@ -69,6 +70,7 @@ func main() {
 		&models.EmailSendLog{},
 		&models.CallLog{},
 		&models.ChatMessage{},
+		&models.CallRecording{},
 	); err != nil {
 		appLogger.Fatal().Err(err).Msg("auto migrate failed")
 	}
@@ -94,6 +96,8 @@ func main() {
 	callLogSvc := calllog.NewService(callLogRepo, userSvc, appLogger)
 	chatLogRepo := chatlog.NewRepository(db)
 	chatLogSvc := chatlog.NewService(chatLogRepo, userSvc, appLogger)
+	recordingRepo := recording.NewRepository(db)
+	recordingSvc := recording.NewService(recordingRepo, callLogRepo, userSvc, cfg.ASR, cfg.OpenRouter, appLogger)
 
 	// 初始化邮件服务
 	// Initialize mail service
@@ -126,7 +130,8 @@ func main() {
 	emailHandler := handlers.NewEmailHandler(appLogger, mail.NewVerificationCodeService(db, mailSvc))
 	presenceManager := presence.NewManager(redisClient, appLogger, userSvc)
 
-	userHandler := handlers.NewUserHandler(appLogger, userSvc, presenceManager, contactSvc, callLogSvc, chatLogSvc)
+	userHandler := handlers.NewUserHandler(appLogger, userSvc, presenceManager, contactSvc, callLogSvc, chatLogSvc, recordingSvc)
+	recordingHandler := handlers.NewRecordingHandler(appLogger, recordingSvc)
 	webrtcHandler := handlers.NewWebRTCHandler(appLogger, cfg.WebRTC)
 	signalingHub := signaling.NewHub(redisClient, appLogger, presenceManager)
 
@@ -156,6 +161,7 @@ func main() {
 		AuthHandler:      authHandler,
 		EmailHandler:     emailHandler,
 		UserHandler:      userHandler,
+		RecordingHandler: recordingHandler,
 		SignalingHandler: signalingHandler,
 		WebRTCHandler:    webrtcHandler,
 		AuthMiddleware:   auth.Middleware(jwtManager),

@@ -14,6 +14,7 @@ type RouteDependencies struct {
 	AuthHandler      *handlers.AuthHandler
 	EmailHandler     *handlers.EmailHandler
 	UserHandler      *handlers.UserHandler
+	RecordingHandler *handlers.RecordingHandler
 	SignalingHandler *handlers.SignalingHandler
 	WebRTCHandler    *handlers.WebRTCHandler
 	AuthMiddleware   gin.HandlerFunc
@@ -45,6 +46,9 @@ func RegisterRoutes(router *gin.Engine, deps RouteDependencies) {
 		// 用户相关接口（联系人、通话记录等）
 		userGroup := protected.Group("/users")
 		deps.UserHandler.RegisterRoutes(userGroup)
+		if deps.RecordingHandler != nil {
+			deps.RecordingHandler.RegisterRoutes(userGroup)
+		}
 		// 信令 WebSocket 入口
 		protected.GET("/ws", deps.SignalingHandler.Handle)
 		// WebRTC 配置下发（可选）

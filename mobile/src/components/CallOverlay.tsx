@@ -14,6 +14,8 @@ const CallOverlay: React.FC = () => {
     acceptCall,
     rejectCall,
     endCall,
+    isRecording,
+    startRecording,
     localStream,
     remoteStream
   } = useSignaling();
@@ -57,6 +59,24 @@ const CallOverlay: React.FC = () => {
                 : t("call_status_in_call_short")
           })}
         </Text>
+        {status === "in_call" ? (
+          <View style={styles.recordRow}>
+            {isRecording ? (
+              <Text style={styles.recordingBadge}>
+                {t("recording_in_progress")}
+              </Text>
+            ) : (
+              <TouchableOpacity
+                style={styles.recordButton}
+                onPress={startRecording}
+              >
+                <Text style={styles.recordButtonText}>
+                  {t("record_call_button")}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
         {/* 操作按钮 */}
         <View style={styles.actions}>
           {isIncoming && status === "incoming" ? (
@@ -121,6 +141,26 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end"
+  },
+  recordRow: {
+    marginBottom: 12,
+    alignItems: "flex-start"
+  },
+  recordButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#ef4444",
+    borderRadius: 12
+  },
+  recordButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13
+  },
+  recordingBadge: {
+    color: "#f87171",
+    fontWeight: "700",
+    fontSize: 13
   },
   button: {
     paddingVertical: 12,

@@ -12,6 +12,7 @@ import ContactsScreen from "../screens/ContactsScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import CallLogsScreen from "../screens/CallLogsScreen";
 import ChatScreen from "../screens/ChatScreen";
+import CallRecordingDetailScreen from "../screens/CallRecordingDetailScreen";
 
 // 路由参数类型定义
 export type RootStackParamList = {
@@ -21,6 +22,7 @@ export type RootStackParamList = {
   Contacts: undefined;
   ChangePassword: undefined;
   CallLogs: undefined;
+  CallRecordingDetail: { callId: string };
   Chat: { peerEmail: string; peerName?: string };
 };
 
@@ -69,6 +71,11 @@ const AppNavigator: React.FC = () => {
             name="CallLogs"
             component={CallLogsScreen}
             options={{ title: t("call_logs_title") }}
+          />
+          <Stack.Screen
+            name="CallRecordingDetail"
+            component={CallRecordingDetailScreen}
+            options={{ title: t("recording_detail_nav_title") }}
           />
           <Stack.Screen
             name="Chat"

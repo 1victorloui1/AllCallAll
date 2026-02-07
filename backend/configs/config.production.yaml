@@ -40,5 +40,17 @@ webrtc:
         - "stun:stun.l.google.com:19302"
         - "stun:stun1.l.google.com:19302"
 
+asr:
+  access_key_id: ""
+  access_key_secret: ""
+  app_key: ""
+  region: "cn-shanghai"
+  endpoint: "https://nls-gateway-cn-shanghai.aliyuncs.com"
+
+openrouter:
+  api_key: ""
+  base_url: "https://openrouter.ai/api/v1"
+  model: "deepseek/deepseek-chat"
+
 logging:
   level: "info"

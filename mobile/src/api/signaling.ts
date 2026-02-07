@@ -16,6 +16,7 @@ export type SignalMessageType =
   | "call.accept"
   | "call.reject"
   | "call.end"
+  | "call.record.start"
   | "ice.candidate"
   | "call.error"
   | "chat.message";

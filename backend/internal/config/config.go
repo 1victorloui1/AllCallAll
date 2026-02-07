@@ -30,6 +30,8 @@ type Config struct {
 	Mail     Mail           `yaml:"mail"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	WebRTC   WebRTCConfig   `yaml:"webrtc"`
+	ASR      ASRConfig      `yaml:"asr"`
+	OpenRouter OpenRouterConfig `yaml:"openrouter"`
 	Logging  LoggingConfig  `yaml:"logging"`
 }
 
@@ -88,6 +90,24 @@ type ICEServer struct {
 // LoggingConfig controls logger severity.
 type LoggingConfig struct {
 	Level string `yaml:"level"`
+}
+
+// ASRConfig 阿里云语音识别配置
+// ASRConfig holds Aliyun ASR settings.
+type ASRConfig struct {
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	AppKey          string `yaml:"app_key"`
+	Region          string `yaml:"region"`
+	Endpoint        string `yaml:"endpoint"`
+}
+
+// OpenRouterConfig OpenRouter LLM 配置
+// OpenRouterConfig holds OpenRouter API settings.
+type OpenRouterConfig struct {
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
+	Model   string `yaml:"model"`
 }
 
 // Load 初始化并返回全局配置
@@ -168,6 +188,34 @@ func (c *Config) postProcess() error {
 		c.Mail.Password = mailPassword
 	}
 
+	// 支持环境变量覆盖阿里云 ASR 配置
+	if akID := os.Getenv("ALIYUN_AK_ID"); akID != "" {
+		c.ASR.AccessKeyID = akID
+	}
+	if akSecret := os.Getenv("ALIYUN_AK_SECRET"); akSecret != "" {
+		c.ASR.AccessKeySecret = akSecret
+	}
+	if appKey := os.Getenv("ALIYUN_ASR_APP_KEY"); appKey != "" {
+		c.ASR.AppKey = appKey
+	}
+	if region := os.Getenv("ALIYUN_ASR_REGION"); region != "" {
+		c.ASR.Region = region
+	}
+	if endpoint := os.Getenv("ALIYUN_ASR_ENDPOINT"); endpoint != "" {
+		c.ASR.Endpoint = endpoint
+	}
+
+	// 支持环境变量覆盖 OpenRouter 配置
+	if apiKey := os.Getenv("OPENROUTER_API_KEY"); apiKey != "" {
+		c.OpenRouter.APIKey = apiKey
+	}
+	if baseURL := os.Getenv("OPENROUTER_BASE_URL"); baseURL != "" {
+		c.OpenRouter.BaseURL = baseURL
+	}
+	if model := os.Getenv("OPENROUTER_MODEL"); model != "" {
+		c.OpenRouter.Model = model
+	}
+
 	// 支持环境变量覆盖 ICE/TURN 配置，格式为 JSON 数组：
 	// [{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:1.2.3.4:3478"],"username":"user","credential":"pass"}]
 	if iceServersJSON := os.Getenv("WEBRTC_ICE_SERVERS_JSON"); iceServersJSON != "" {
@@ -182,6 +230,19 @@ func (c *Config) postProcess() error {
 
 	if c.JWT.Secret == "" {
 		return errors.New("config: jwt.secret must not be empty")
+	}
+
+	if c.ASR.Region == "" {
+		c.ASR.Region = "cn-shanghai"
+	}
+	if c.ASR.Endpoint == "" {
+		c.ASR.Endpoint = "https://nls-gateway-cn-shanghai.aliyuncs.com"
+	}
+	if c.OpenRouter.BaseURL == "" {
+		c.OpenRouter.BaseURL = "https://openrouter.ai/api/v1"
+	}
+	if c.OpenRouter.Model == "" {
+		c.OpenRouter.Model = "gpt-5.2"
 	}
 
 	return nil

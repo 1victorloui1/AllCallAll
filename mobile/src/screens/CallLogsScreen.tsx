@@ -6,6 +6,7 @@ import {
   StyleSheet,
   FlatList,
   RefreshControl,
+  TouchableOpacity,
   Alert
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -19,7 +20,7 @@ import { useLanguage } from "../context/LanguageContext";
 type Props = NativeStackScreenProps<RootStackParamList, "CallLogs">;
 
 // 通话记录页组件
-const CallLogsScreen: React.FC<Props> = () => {
+const CallLogsScreen: React.FC<Props> = ({ navigation }) => {
   const { token } = useAuthContext();
   const { t } = useLanguage();
   // 列表数据与加载状态
@@ -68,11 +69,28 @@ const CallLogsScreen: React.FC<Props> = () => {
     return t("call_logs_missed");
   }, [t]);
 
+  // 录音状态提示
+  const getRecordingLabel = useCallback((status?: string) => {
+    if (!status) {
+      return "";
+    }
+    if (status === "ready") {
+      return t("call_logs_recording_ready");
+    }
+    if (status === "failed") {
+      return t("call_logs_recording_failed");
+    }
+    return t("call_logs_recording_processing");
+  }, [t]);
+
   // 渲染单条通话记录
   const renderItem = useCallback(
     ({ item }: { item: CallLog }) => {
       const name = item.peer_display_name?.trim() || item.peer_email;
       const timeLabel = formatTime(item.started_at || item.created_at);
+      const showRecording = item.recording_available;
+      const recordingLabel = getRecordingLabel(item.recording_status);
+      const canViewRecording = item.recording_status === "ready";
       return (
         <View style={styles.card}>
           <View style={styles.row}>
@@ -81,10 +99,30 @@ const CallLogsScreen: React.FC<Props> = () => {
           </View>
           <Text style={styles.email}>{item.peer_email}</Text>
           <Text style={styles.time}>{timeLabel}</Text>
+          {showRecording ? (
+            <View style={styles.recordingRow}>
+              {canViewRecording ? (
+                <TouchableOpacity
+                  style={styles.recordingButton}
+                  onPress={() =>
+                    navigation.navigate("CallRecordingDetail", {
+                      callId: item.call_id
+                    })
+                  }
+                >
+                  <Text style={styles.recordingButtonText}>
+                    {recordingLabel}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.recordingStatus}>{recordingLabel}</Text>
+              )}
+            </View>
+          ) : null}
         </View>
       );
     },
-    [formatTime, getTypeLabel]
+    [formatTime, getRecordingLabel, getTypeLabel, navigation]
   );
 
   // 空状态展示
@@ -159,6 +197,26 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 12,
     color: "#9ca3af"
+  },
+  recordingRow: {
+    marginTop: 10
+  },
+  recordingStatus: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: "600"
+  },
+  recordingButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10
+  },
+  recordingButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600"
   },
   emptyText: {
     textAlign: "center",

@@ -23,6 +23,7 @@ import {
 import { Audio } from "expo-av";
 
 import { fetchChatLogs } from "../api/chatLogs";
+import { startRecording as startRecordingApi, uploadRecording as uploadRecordingApi } from "../api/callRecordings";
 import { SignalingClient, SignalMessage } from "../api/signaling";
 import { fetchWebRTCConfig } from "../api/webrtc";
 import { useAuthContext } from "./AuthContext";
@@ -93,6 +94,8 @@ interface SignalingContextValue {
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
   endCall: () => void;
+  isRecording: boolean;
+  startRecording: () => Promise<void>;
   chatMessages: Record<string, ChatMessage[]>;
   sendChatMessage: (peerEmail: string, text: string) => void;
   loadChatHistory: (peerEmail: string, limit?: number) => Promise<void>;
@@ -140,7 +143,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   children
 }) => {
   const { token, user } = useAuthContext();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   // 通话与连接状态
   const [status, setStatus] = useState<CallStatus>("idle");
   const [session, setSession] = useState<CallSession | null>(null);
@@ -148,6 +151,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
+  const [isRecording, setIsRecording] = useState(false);
   // 聊天消息缓存（按对方邮箱归档）
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
 
@@ -162,6 +166,9 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringtoneRef = useRef<Audio.Sound | null>(null);
   const ringtoneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingCallIdRef = useRef<string | null>(null);
+  const recordingOwnerRef = useRef(false);
 
   // 同步会话引用，避免闭包读取旧值
   useEffect(() => {
@@ -302,6 +309,85 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [stopRingtone]);
 
+  // 录音文件 mime 类型推断
+  const getRecordingMimeType = useCallback((uri: string) => {
+    const ext = uri.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "wav":
+        return "audio/wav";
+      case "mp4":
+        return "audio/mp4";
+      case "m4a":
+        return "audio/m4a";
+      case "3gp":
+        return "audio/3gpp";
+      default:
+        return "audio/m4a";
+    }
+  }, []);
+
+  // 开始本地录音
+  const startLocalRecording = useCallback(async () => {
+    if (recordingRef.current) {
+      return;
+    }
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true
+      });
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      await recording.startAsync();
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (error) {
+      console.error("startLocalRecording failed", error);
+      Alert.alert(t("error_title"), t("recording_start_failed"));
+    }
+  }, [t]);
+
+  // 停止本地录音并返回文件路径
+  const stopLocalRecording = useCallback(async () => {
+    const recording = recordingRef.current;
+    if (!recording) {
+      return null;
+    }
+    recordingRef.current = null;
+    setIsRecording(false);
+    try {
+      await recording.stopAndUnloadAsync();
+    } catch (error) {
+      console.warn("stopLocalRecording failed", error);
+    }
+    const uri = recording.getURI();
+    return uri ?? null;
+  }, []);
+
+  // 结束录音并上传音频
+  const finalizeRecording = useCallback(async () => {
+    if (!recordingRef.current) {
+      return;
+    }
+    const callId = recordingCallIdRef.current ?? sessionRef.current?.callId ?? "";
+    const uri = await stopLocalRecording();
+    recordingOwnerRef.current = false;
+    recordingCallIdRef.current = null;
+    if (!uri || !token || !callId) {
+      return;
+    }
+    const mimeType = getRecordingMimeType(uri);
+    try {
+      await uploadRecordingApi(token, callId, uri, mimeType);
+    } catch (error) {
+      console.error("uploadRecording failed", error);
+      Alert.alert(t("error_title"), t("recording_upload_failed"));
+    }
+  }, [getRecordingMimeType, stopLocalRecording, t, token]);
+
   // 释放 WebRTC 资源与媒体流
   const resetPeerResources = useCallback(() => {
     pendingLocalCandidates.current = [];
@@ -329,13 +415,17 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   // 重置通话状态（结束/失败后的统一收尾）
   const resetCallState = useCallback(() => {
     pendingTarget.current = null;
+    void finalizeRecording();
+    recordingCallIdRef.current = null;
+    recordingOwnerRef.current = false;
+    setIsRecording(false);
     setSession(null);
     sessionRef.current = null;
     setStatus("idle");
     clearCallTimeout();
     void stopRingtone();
     resetPeerResources();
-  }, [clearCallTimeout, resetPeerResources, stopRingtone]);
+  }, [clearCallTimeout, finalizeRecording, resetPeerResources, stopRingtone]);
 
   // 统一发送信令消息，自动处理断线提示
   const sendMessage = useCallback((message: SignalMessage) => {
@@ -513,6 +603,43 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     [appendChatMessage, sendMessage, t, user?.email]
   );
 
+  // 开始录音：发起录音会话并通知对端
+  const startRecording = useCallback(async () => {
+    if (!token || !user) {
+      Alert.alert(t("login_required_title"), t("login_required_body"));
+      return;
+    }
+    if (statusRef.current !== "in_call") {
+      Alert.alert(t("call_error_title"), t("call_error_generic"));
+      return;
+    }
+    if (isRecording) {
+      return;
+    }
+    const currentSession = sessionRef.current;
+    if (!currentSession || !currentSession.callId) {
+      Alert.alert(t("call_error_title"), t("call_error_generic"));
+      return;
+    }
+    try {
+      await startRecordingApi(token, currentSession.callId, language);
+      await startLocalRecording();
+      if (!recordingRef.current) {
+        return;
+      }
+      recordingOwnerRef.current = true;
+      recordingCallIdRef.current = currentSession.callId;
+      sendMessage({
+        type: "call.record.start",
+        call_id: currentSession.callId,
+        to: currentSession.peerEmail
+      });
+    } catch (error) {
+      console.error("startRecording failed", error);
+      Alert.alert(t("error_title"), t("recording_start_failed"));
+    }
+  }, [isRecording, language, sendMessage, startLocalRecording, t, token, user]);
+
   // 拨出超时：60 秒无人接听则自动结束
   const scheduleCallTimeout = useCallback(
     (callId: string, peerEmail: string) => {
@@ -667,6 +794,23 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           // 播放来电铃声
           void startRingtone();
           break;
+        case "call.record.start": {
+          // 对方开始录音：提示并启动本地录音
+          if (statusRef.current !== "in_call") {
+            break;
+          }
+          if (recordingRef.current) {
+            break;
+          }
+          const activeCallId = message.call_id ?? sessionRef.current?.callId;
+          if (!activeCallId) {
+            break;
+          }
+          recordingOwnerRef.current = false;
+          recordingCallIdRef.current = activeCallId;
+          await startLocalRecording();
+          break;
+        }
         case "call.accept":
           // 对方接听：停止超时计时器与铃声
           clearCallTimeout();
@@ -721,6 +865,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
           // 对方挂断或超时：清理状态并提示
           clearCallTimeout();
           void stopRingtone();
+          void finalizeRecording();
           if (
             message.payload &&
             typeof message.payload === "object" &&
@@ -811,11 +956,13 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [
     appendChatMessage,
     clearCallTimeout,
+    finalizeRecording,
     drainRemoteCandidates,
     enqueueRemoteCandidate,
     flushPendingLocalCandidates,
     resetCallState,
     scheduleCallTimeout,
+    startLocalRecording,
     startRingtone,
     stopRingtone,
     t,
@@ -1038,6 +1185,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     // 取消超时计时器并停止铃声
     clearCallTimeout();
     void stopRingtone();
+    void finalizeRecording();
     // 通知对端结束通话
     sendMessage({
       type: "call.end",
@@ -1046,7 +1194,7 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     // 清理通话状态与媒体资源
     resetCallState();
-  }, [clearCallTimeout, resetCallState, sendMessage, session, stopRingtone]);
+  }, [clearCallTimeout, finalizeRecording, resetCallState, sendMessage, session, stopRingtone]);
 
   // 向外暴露上下文能力
   const value = useMemo<SignalingContextValue>(
@@ -1060,6 +1208,8 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       acceptCall,
       rejectCall,
       endCall,
+      isRecording,
+      startRecording,
       chatMessages,
       sendChatMessage,
       loadChatHistory
@@ -1074,6 +1224,8 @@ export const SignalingProvider: React.FC<{ children: React.ReactNode }> = ({
       acceptCall,
       rejectCall,
       endCall,
+      isRecording,
+      startRecording,
       chatMessages,
       sendChatMessage,
       loadChatHistory

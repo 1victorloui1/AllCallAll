@@ -13,6 +13,8 @@ export interface CallLog {
   answered_at?: string | null;
   ended_at?: string | null;
   created_at: string;
+  recording_status?: string;
+  recording_available?: boolean;
 }
 
 // 获取通话记录（默认 50 条）

@@ -14,30 +14,33 @@ import (
 	"github.com/allcallall/backend/internal/chatlog"
 	"github.com/allcallall/backend/internal/contact"
 	"github.com/allcallall/backend/internal/presence"
+	"github.com/allcallall/backend/internal/recording"
 	"github.com/allcallall/backend/internal/user"
 )
 
 // UserHandler 用户相关接口
 // UserHandler serves user-focused endpoints.
 type UserHandler struct {
-	logger   zerolog.Logger
-	users    *user.Service
-	presence *presence.Manager
-	contacts *contact.Service
-	callLogs *calllog.Service
-	chatLogs *chatlog.Service
+	logger     zerolog.Logger
+	users      *user.Service
+	presence   *presence.Manager
+	contacts   *contact.Service
+	callLogs   *calllog.Service
+	chatLogs   *chatlog.Service
+	recordings *recording.Service
 }
 
 // NewUserHandler 构造函数
 // NewUserHandler creates a UserHandler.
-func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service, callLogs *calllog.Service, chatLogs *chatlog.Service) *UserHandler {
+func NewUserHandler(log zerolog.Logger, users *user.Service, presence *presence.Manager, contacts *contact.Service, callLogs *calllog.Service, chatLogs *chatlog.Service, recordings *recording.Service) *UserHandler {
 	return &UserHandler{
-		logger:   log.With().Str("component", "user_handler").Logger(),
-		users:    users,
-		presence: presence,
-		contacts: contacts,
-		callLogs: callLogs,
-		chatLogs: chatLogs,
+		logger:     log.With().Str("component", "user_handler").Logger(),
+		users:      users,
+		presence:   presence,
+		contacts:   contacts,
+		callLogs:   callLogs,
+		chatLogs:   chatLogs,
+		recordings: recordings,
 	}
 }
 
@@ -205,17 +208,27 @@ func (h *UserHandler) handleCallLogs(c *gin.Context) {
 	// 查询通话记录并转换为响应结构
 	response := make([]gin.H, 0, len(logs))
 	for _, log := range logs {
+		recordingStatus := ""
+		recordingAvailable := false
+		if h.recordings != nil {
+			if status, ok := h.recordings.GetRecordingStatus(c.Request.Context(), log.CallID, claims.UserID); ok {
+				recordingStatus = status
+				recordingAvailable = true
+			}
+		}
 		response = append(response, gin.H{
-			"id":                log.ID,
-			"call_id":           log.CallID,
-			"peer_email":        log.PeerEmail,
-			"peer_display_name": log.PeerDisplayName,
-			"direction":         log.Direction,
-			"status":            log.Status,
-			"started_at":        log.StartedAt,
-			"answered_at":       log.AnsweredAt,
-			"ended_at":          log.EndedAt,
-			"created_at":        log.CreatedAt,
+			"id":                  log.ID,
+			"call_id":             log.CallID,
+			"peer_email":          log.PeerEmail,
+			"peer_display_name":   log.PeerDisplayName,
+			"direction":           log.Direction,
+			"status":              log.Status,
+			"started_at":          log.StartedAt,
+			"answered_at":         log.AnsweredAt,
+			"ended_at":            log.EndedAt,
+			"created_at":          log.CreatedAt,
+			"recording_status":    recordingStatus,
+			"recording_available": recordingAvailable,
 		})
 	}
 
