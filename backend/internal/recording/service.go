@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/rs/zerolog"
 
@@ -39,6 +40,7 @@ const (
 
 	defaultSampleRate = 16000
 	defaultFormat     = "wav"
+	dedupWindowMs     = 1250
 )
 
 // TranscriptSegment represents a single utterance segment.
@@ -265,6 +267,7 @@ func (s *Service) processRecording(recordID uint64) {
 	}
 
 	merged := mergeSegments(ownerSegs, peerSegs)
+	merged = deduplicateSegments(merged, dedupWindowMs)
 	transcriptBytes, _ := json.Marshal(merged)
 
 	plainTranscript := buildTranscriptText(merged)
@@ -346,6 +349,46 @@ func buildTranscriptText(items []TranscriptSegment) string {
 		fmt.Fprintf(&b, "%s [%d-%d]: %s\n", seg.Speaker, seg.StartMs, seg.EndMs, seg.Text)
 	}
 	return b.String()
+}
+
+func deduplicateSegments(items []TranscriptSegment, windowMs int64) []TranscriptSegment {
+	if len(items) < 2 || windowMs <= 0 {
+		return items
+	}
+	result := make([]TranscriptSegment, 0, len(items))
+	last := items[0]
+	lastNorm := normalizeForDedup(last.Text)
+	result = append(result, last)
+	for i := 1; i < len(items); i++ {
+		current := items[i]
+		currentNorm := normalizeForDedup(current.Text)
+		if currentNorm != "" && currentNorm == lastNorm {
+			if current.StartMs-last.StartMs <= windowMs {
+				continue
+			}
+		}
+		result = append(result, current)
+		last = current
+		lastNorm = currentNorm
+	}
+	return result
+}
+
+func normalizeForDedup(text string) string {
+	if text == "" {
+		return ""
+	}
+	trimmed := strings.TrimSpace(text)
+	trimmed = strings.ToLower(trimmed)
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	for _, r := range trimmed {
+		if unicode.IsSpace(r) || unicode.IsPunct(r) {
+			continue
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
 }
 
 // --- Aliyun ASR client ---
